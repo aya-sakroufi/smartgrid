@@ -14,7 +14,7 @@ sleep 2
 echo "[+] Backend (Port 5000)..."
 cd backend
 source venv/bin/activate
-python app.py &
+python3 app.py &
 BACK_PID=$!
 cd ..
 
