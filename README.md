@@ -79,8 +79,8 @@ Où :
 
 ```bash
 # 1. Cloner le repository
-git clone https://github.com/VOTRE_USERNAME/smart-grid-solver.git
-cd smart-grid-solver
+git clone https://github.com/aya-sakroufi/smartgrid
+cd smartgrid
 
 # 2. Rendre les scripts exécutables
 chmod +x install.sh start.sh stop.sh
