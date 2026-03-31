@@ -4,16 +4,249 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import time
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import spsolve
-import json
+import math
+from collections import deque
 
 app = Flask(__name__)
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
 
 # ============================================================
-# 1. CLASSES DES MÉTHODES DIRECTES (Aspect Mathématique)
+# DONNÉES IEEE RÉELLES (Source: Matpower / University of Washington)
+# ============================================================
+
+class RealIEEEData:
+
+    @staticmethod
+    def _build_admittance_matrix(n, branches):
+        B = np.zeros((n, n))
+        for i, j, x in branches:
+            b = 1.0 / x if x != 0 else 0
+            if i != j:
+                i_idx, j_idx = i - 1, j - 1
+                B[i_idx, j_idx] -= b
+                B[j_idx, i_idx] -= b
+                B[i_idx, i_idx] += b
+                B[j_idx, j_idx] += b
+        return B
+
+    @staticmethod
+    def get_ieee_14_real():
+        n = 14
+        branches = [
+            (1,2,0.05917),(1,5,0.22304),(2,3,0.19797),(2,4,0.17632),
+            (2,5,0.17388),(3,4,0.17103),(4,5,0.04211),(4,7,0.20912),
+            (4,9,0.55618),(5,6,0.25202),(6,11,0.19890),(6,12,0.25581),
+            (6,13,0.13027),(7,8,0.17615),(7,9,0.11001),(9,10,0.08450),
+            (9,14,0.27038),(10,11,0.19207),(12,13,0.19988),(13,14,0.34802)
+        ]
+        B = RealIEEEData._build_admittance_matrix(n, branches)
+        P_net = np.array([
+            2.3239, 0.1830,-0.9420,-0.4780,-0.0760,-0.1120,
+            0.0000, 0.0000,-0.2950,-0.0900,-0.0350,-0.0610,
+           -0.1350,-0.1490
+        ]) / 100.0
+        coords = [
+            [0.500,0.820],[0.220,0.640],[0.780,0.640],[0.500,0.480],
+            [0.150,0.320],[0.850,0.320],[0.680,0.220],[0.320,0.220],
+            [0.500,0.120],[0.680,0.120],[0.130,0.120],[0.320,0.080],
+            [0.500,0.060],[0.680,0.060],
+        ]
+        return {
+            'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
+            'name': 'IEEE 14 Bus (Real Data)', 'coords': coords,
+            'slack_bus': 0, 'source': 'Matpower case14.m',
+            'lines': len(branches),
+            'branches': [[i-1, j-1] for i, j, _ in branches]
+        }
+
+    @staticmethod
+    def get_ieee_30_real():
+        n = 30
+        branches = [
+            (1,2,0.0575),(1,3,0.1652),(2,4,0.1737),(3,4,0.0379),
+            (2,5,0.1983),(2,6,0.1763),(4,6,0.0414),(5,7,0.1160),
+            (6,7,0.0820),(6,8,0.0420),(6,9,0.0318),(6,10,0.0309),
+            (9,11,0.1271),(9,10,0.0845),(4,12,0.0236),(12,13,0.0384),
+            (12,14,0.0434),(12,15,0.0405),(12,16,0.0429),(14,15,0.0434),
+            (16,17,0.0389),(15,18,0.0599),(18,19,0.0132),(19,20,0.0244),
+            (10,20,0.0936),(10,17,0.0329),(10,21,0.0348),(10,22,0.0727),
+            (21,22,0.0116),(15,23,0.0419),(22,24,0.0280),(23,24,0.0233),
+            (24,25,0.0985),(25,26,0.0238),(25,27,0.0389),(28,27,0.0195),
+            (27,29,0.0378),(27,30,0.0410),(29,30,0.0355),(8,28,0.0437),
+            (6,28,0.0599)
+        ]
+        B = RealIEEEData._build_admittance_matrix(n, branches)
+        P_net = np.array([
+            0.2604, 0.4020,-0.0240,-0.0760, 0.0000,-0.9420,
+            0.0000,-0.3000,-0.0580,-0.1120, 0.0000,-0.0620,
+            0.0000,-0.0820,-0.0700,-0.0350,-0.0900,-0.0320,
+           -0.0950,-0.0220,-0.1750,-0.0350,-0.0320,-0.0870,
+           -0.0240,-0.0240,-0.0430,-0.0260,-0.0240,-0.1060
+        ]) / 100.0
+        coords = []
+        for i in range(n):
+            angle = (2 * math.pi * i) / n - math.pi / 2
+            r = 0.4 if i < 15 else 0.35
+            coords.append([0.5 + r * math.cos(angle), 0.5 + r * math.sin(angle)])
+        return {
+            'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
+            'name': 'IEEE 30 Bus (Real Data)', 'coords': coords,
+            'slack_bus': 0, 'source': 'Matpower case30.m',
+            'lines': len(branches),
+            'branches': [[i-1, j-1] for i, j, _ in branches]
+        }
+
+    @staticmethod
+    def get_ieee_118_real():
+        n = 118
+        branches = [
+            (1,2,0.0303),(1,3,0.0129),(2,12,0.0238),(3,5,0.0386),(3,12,0.0219),
+            (4,5,0.0179),(4,11,0.0203),(5,6,0.0194),(5,11,0.0209),(6,7,0.0258),
+            (7,12,0.0143),(8,9,0.0023),(8,5,0.0267),(9,10,0.0022),(10,11,0.0060),
+            (11,12,0.0173),(11,13,0.0176),(12,14,0.0107),(12,16,0.0232),(13,23,0.0244),
+            (14,15,0.0178),(15,16,0.0209),(15,19,0.0124),(16,17,0.0187),(16,20,0.0171),
+            (17,18,0.0173),(17,22,0.0144),(18,21,0.0109),(19,20,0.0254),(20,21,0.0184),
+            (21,22,0.0209),(22,23,0.0141),(23,25,0.0145),(24,25,0.0108),(24,72,0.0282),
+            (25,27,0.0319),(26,25,0.0072),(26,30,0.0238),(27,28,0.0192),(27,32,0.0386),
+            (28,29,0.0237),(29,31,0.0267),(30,17,0.0166),(30,38,0.0294),(31,32,0.0231),
+            (32,113,0.0416),(33,37,0.0202),(34,35,0.0064),(34,36,0.0114),(34,37,0.0306),
+            (35,36,0.0058),(36,40,0.0297),(37,38,0.0175),(37,39,0.0275),(38,65,0.0233),
+            (39,40,0.0271),(40,41,0.0191),(40,42,0.0161),(41,42,0.0049),(42,49,0.0715),
+            (42,49,0.0715),(43,44,0.0231),(44,45,0.0173),(45,46,0.0147),(45,49,0.0697),
+            (46,47,0.0105),(46,48,0.0151),(47,69,0.0278),(48,49,0.0295),(49,50,0.0170),
+            (49,51,0.0374),(49,54,0.0536),(49,66,0.0263),(49,69,0.0269),(50,57,0.0173),
+            (51,52,0.0203),(51,58,0.0255),(52,53,0.0405),(53,54,0.0263),(54,55,0.0169),
+            (54,56,0.0081),(54,59,0.0503),(55,56,0.0089),(55,59,0.0466),(56,57,0.0131),
+            (56,58,0.0177),(56,59,0.0273),(57,60,0.0189),(58,60,0.0186),(59,60,0.0182),
+            (59,61,0.0145),(60,61,0.0188),(60,62,0.0124),(61,62,0.0172),(62,66,0.0258),
+            (62,67,0.0295),(63,59,0.0386),(63,64,0.0173),(64,65,0.0216),(65,66,0.0263),
+            (65,68,0.0258),(66,67,0.0224),(68,69,0.0017),(68,81,0.0140),(68,116,0.0049),
+            (69,70,0.0305),(69,75,0.0183),(70,71,0.0128),(70,74,0.0327),(70,75,0.0317),
+            (71,72,0.0226),(72,73,0.0140),(72,74,0.0153),(73,76,0.0128),(74,75,0.0273),
+            (75,77,0.0173),(75,118,0.0198),(76,77,0.0104),(76,118,0.0204),(77,78,0.0264),
+            (77,80,0.0296),(77,80,0.0296),(78,79,0.0132),(79,80,0.0156),(80,96,0.0171),
+            (80,97,0.0173),(80,98,0.0234),(80,99,0.0295),(81,80,0.0273),(82,83,0.0298),
+            (83,84,0.0298),(83,85,0.0212),(84,85,0.0199),(85,86,0.0141),(85,88,0.0255),
+            (85,89,0.0295),(86,87,0.0164),(87,88,0.0151),(88,89,0.0274),(89,90,0.0099),
+            (89,90,0.0099),(89,91,0.0185),(89,92,0.0186),(90,91,0.0099),(91,92,0.0113),
+            (92,93,0.0266),(92,94,0.0169),(92,100,0.0138),(92,102,0.0295),(93,94,0.0295),
+            (94,95,0.0143),(94,96,0.0167),(95,96,0.0166),(96,97,0.0255),(97,98,0.0131),
+            (98,100,0.0211),(99,100,0.0178),(100,101,0.0252),(100,103,0.0376),(100,104,0.0456),
+            (100,106,0.0180),(101,102,0.0270),(101,103,0.0424),(103,104,0.0152),(103,105,0.0185),
+            (103,110,0.0278),(104,105,0.0184),(105,106,0.0114),(105,107,0.0231),(105,108,0.0135),
+            (106,107,0.0143),(108,109,0.0165),(108,110,0.0166),(109,110,0.0228),(110,111,0.0190),
+            (110,112,0.0256),(111,112,0.0146),(111,113,0.0164),(112,113,0.0100),(113,114,0.0101),
+            (113,115,0.0117),(114,115,0.0150),(115,116,0.0134),(115,117,0.0297),(116,117,0.0119),
+            (116,118,0.0220),(117,118,0.0220),
+        ]
+        B = RealIEEEData._build_admittance_matrix(n, branches)
+        P_gen_mw = {
+            1:0,4:0,6:0,8:0,10:450,12:85,15:0,18:0,19:0,24:0,25:220,26:314,
+            27:0,31:7,32:0,34:0,36:0,40:0,42:0,46:19,49:204,54:48,55:0,56:0,
+            59:155,61:160,62:0,65:391,66:392,69:516,70:0,72:0,73:0,74:0,76:0,
+            77:0,80:477,85:0,87:4,89:607,90:0,91:0,92:0,99:0,100:252,103:40,
+            104:0,105:0,107:0,110:0,111:36,112:0,113:0,116:0,
+        }
+        P_load_mw = {
+            2:22,3:39,4:39,5:0,6:52,7:19,8:28,9:0,10:0,11:70,12:47,13:34,
+            14:14,15:90,16:25,17:11,18:60,19:45,20:18,21:14,22:10,23:7,24:13,
+            25:0,26:0,27:71,28:17,29:24,30:0,31:43,32:59,33:23,34:59,35:33,
+            36:31,37:0,38:0,39:27,40:66,41:37,42:96,43:18,44:16,45:53,46:28,
+            47:34,48:20,49:87,50:17,51:17,52:18,53:23,54:113,55:63,56:84,57:12,
+            58:12,59:277,60:78,61:0,62:77,63:0,64:0,65:0,66:39,67:28,68:0,
+            69:0,70:66,71:0,72:12,73:6,74:68,75:47,76:68,77:61,78:71,79:39,
+            80:130,81:0,82:54,83:20,84:11,85:24,86:21,87:0,88:48,89:0,90:163,
+            91:10,92:65,93:12,94:30,95:42,96:38,97:15,98:34,99:42,100:37,
+            101:58,102:18,103:0,104:38,105:31,106:43,107:50,108:2,109:8,
+            110:39,111:0,112:68,113:6,114:8,115:22,116:184,117:20,118:33,
+        }
+        P_net = np.zeros(n)
+        for bus, mw in P_gen_mw.items():
+            P_net[bus - 1] += mw / 100.0
+        for bus, mw in P_load_mw.items():
+            P_net[bus - 1] -= mw / 100.0
+        P_net[0] = -float(np.sum(P_net[1:]))
+        coords = []
+        cols = 12
+        for i in range(n):
+            row = i // cols
+            col = i % cols
+            coords.append([
+                0.05 + col * (0.90 / (cols - 1)),
+                0.05 + row * (0.90 / 9)
+            ])
+        return {
+            'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
+            'name': 'IEEE 118 Bus (Real Data)', 'coords': coords,
+            'slack_bus': 0, 'source': 'Matpower case118.m',
+            'lines': len(branches),
+            'branches': [[i-1, j-1] for i, j, _ in branches]
+        }
+
+
+# ============================================================
+# UTILITAIRES TOPOLOGIE — coupure + BFS
+# ============================================================
+
+def apply_broken_lines(A, broken_lines, n):
+    """
+    Retire les lignes coupées de la matrice d'admittance.
+    Pour chaque coupure (i,j) : soustrait bij des diagonales,
+    remet les entrées hors-diagonales à zéro.
+    """
+    A_mod = np.array(A, dtype=float)
+    for line in broken_lines:
+        i, j = int(line['from']), int(line['to'])
+        if 0 <= i < n and 0 <= j < n:
+            bij = -A_mod[i, j]   # bij > 0 car entrée hors-diag est négative
+            if bij > 0:
+                A_mod[i, i] -= bij
+                A_mod[j, j] -= bij
+                A_mod[i, j] = 0.0
+                A_mod[j, i] = 0.0
+    return A_mod
+
+
+def find_connected_nodes(A_mod, slack_bus, n):
+    """
+    BFS depuis slack_bus sur le graphe de A_mod.
+    Retourne l'ensemble des nœuds atteignables (alimentés).
+    """
+    visited = set()
+    queue = deque([slack_bus])
+    visited.add(slack_bus)
+    while queue:
+        node = queue.popleft()
+        for neighbor in range(n):
+            if neighbor not in visited and A_mod[node, neighbor] != 0:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    return visited
+
+
+def reduce_system(A_mod, b, connected_nodes, slack_bus, n):
+    """
+    Extrait le sous-système des nœuds connectés hors slack.
+    Retourne A_red, b_red, node_map (indices globaux dans l'ordre).
+    """
+    node_map = sorted([node for node in connected_nodes if node != slack_bus])
+    if len(node_map) == 0:
+        return None, None, node_map
+    A_red = A_mod[np.ix_(node_map, node_map)]
+    b_red = b[node_map]
+    return A_red, b_red, node_map
+
+
+# ============================================================
+# SOLVER
 # ============================================================
 
 class DirectSolver:
@@ -22,11 +255,10 @@ class DirectSolver:
         self.b = np.array(b, dtype=float)
         self.n = len(b)
         self.method = method
-        self.steps = []  # Pour affichage progressif
-        
+        self.steps = []
+
     def solve(self):
         t_start = time.time()
-        
         if self.method == 'gauss':
             x, iterations = self._gauss_elimination()
         elif self.method == 'lu':
@@ -35,454 +267,239 @@ class DirectSolver:
             x, iterations = self._cholesky()
         else:
             raise ValueError("Méthode inconnue")
-            
         t_end = time.time()
-        
         return {
             'solution': x.tolist(),
             'time': t_end - t_start,
             'iterations': iterations,
             'residual': float(np.linalg.norm(self.A @ x - self.b)),
-            'steps': self.steps,
-            'matrix_A': self.A.tolist(),
-            'vector_b': self.b.tolist()
+            'steps': self.steps
         }
-    
+
     def _gauss_elimination(self):
-        """Élimination de Gauss avec pivot partiel"""
         A = self.A.copy()
         b = self.b.copy()
         n = self.n
         iterations = 0
-        
-        for k in range(n-1):
-            # Pivot partiel pour stabilité numérique
+        for k in range(n - 1):
             max_idx = np.argmax(np.abs(A[k:, k])) + k
             if A[max_idx, k] == 0:
                 raise ValueError("Matrice singulière")
-            
             if max_idx != k:
                 A[[k, max_idx]] = A[[max_idx, k]]
                 b[[k, max_idx]] = b[[max_idx, k]]
-            
-            for i in range(k+1, n):
+            for i in range(k + 1, n):
                 if A[i, k] != 0:
                     factor = A[i, k] / A[k, k]
                     A[i, k:] -= factor * A[k, k:]
                     b[i] -= factor * b[k]
                     iterations += 1
-                
-                # Envoi progression pour animation (tous les 5 nœuds)
-                if i % 5 == 0:
-                    socketio.emit('progress', {
-                        'node': i,
-                        'method': 'gauss',
-                        'phase': 'elimination'
-                    })
-            
-            self.steps.append({
-                'step': k,
-                'matrix': A.copy().tolist(),
-                'vector': b.copy().tolist()
-            })
-        
-        # Substitution arrière
+            self.steps.append({'step': k, 'matrix': A.copy().tolist()})
         x = np.zeros(n)
-        for i in range(n-1, -1, -1):
-            x[i] = (b[i] - np.dot(A[i, i+1:], x[i+1:])) / A[i, i]
+        for i in range(n - 1, -1, -1):
+            x[i] = (b[i] - np.dot(A[i, i + 1:], x[i + 1:])) / A[i, i]
             iterations += 1
-        
         return x, iterations
-    
+
     def _lu_factorization(self):
-        """Factorisation LU avec pivot"""
         A = self.A.copy()
         n = self.n
         L = np.eye(n)
-        P = np.eye(n)  # Matrice de permutation
-        
+        P = np.eye(n)
         iterations = 0
-        
-        for k in range(n-1):
-            # Pivot
+        for k in range(n - 1):
             max_idx = np.argmax(np.abs(A[k:, k])) + k
             if k != max_idx:
                 A[[k, max_idx]] = A[[max_idx, k]]
                 P[[k, max_idx]] = P[[max_idx, k]]
                 if k > 0:
                     L[[k, max_idx], :k] = L[[max_idx, k], :k]
-            
-            for i in range(k+1, n):
+            for i in range(k + 1, n):
                 L[i, k] = A[i, k] / A[k, k]
                 A[i, k:] -= L[i, k] * A[k, k:]
                 iterations += 1
-            
-            if k % 3 == 0:  # Progression pour animation
-                socketio.emit('progress', {
-                    'node': k,
-                    'method': 'lu',
-                    'phase': 'factorization'
-                })
-        
         U = A
-        
-        # Résolution Ly = Pb puis Ux = y
         Pb = P @ self.b
         y = np.zeros(n)
         for i in range(n):
             y[i] = Pb[i] - np.dot(L[i, :i], y[:i])
-        
         x = np.zeros(n)
-        for i in range(n-1, -1, -1):
-            x[i] = (y[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
-        
-        self.steps.append({
-            'L': L.tolist(),
-            'U': U.tolist(),
-            'P': P.tolist()
-        })
-        
+        for i in range(n - 1, -1, -1):
+            x[i] = (y[i] - np.dot(U[i, i + 1:], x[i + 1:])) / U[i, i]
         return x, iterations
-    
+
     def _cholesky(self):
-        """Factorisation de Cholesky (A = LL^T)"""
         if not self._is_symmetric_positive_definite():
-            raise ValueError("Matrice non symétrique définie positive")
-        
+            raise ValueError(
+                "Matrice non symétrique définie positive — "
+                "Cholesky inapplicable sur la matrice Y-bus DC"
+            )
         n = self.n
         L = np.zeros((n, n))
         iterations = 0
-        
         for j in range(n):
-            sum_diag = sum(L[j, k]**2 for k in range(j))
+            sum_diag = sum(L[j, k] ** 2 for k in range(j))
             L[j, j] = np.sqrt(self.A[j, j] - sum_diag)
-            
-            for i in range(j+1, n):
+            for i in range(j + 1, n):
                 sum_off = sum(L[i, k] * L[j, k] for k in range(j))
                 L[i, j] = (self.A[i, j] - sum_off) / L[j, j]
                 iterations += 1
-            
-            if j % 4 == 0:
-                socketio.emit('progress', {
-                    'node': j,
-                    'method': 'cholesky',
-                    'phase': 'decomposition'
-                })
-        
-        # Résolution Ly = b puis L^Tx = y
         y = np.zeros(n)
         for i in range(n):
             y[i] = (self.b[i] - np.dot(L[i, :i], y[:i])) / L[i, i]
-        
         x = np.zeros(n)
         LT = L.T
-        for i in range(n-1, -1, -1):
-            x[i] = (y[i] - np.dot(LT[i, i+1:], x[i+1:])) / LT[i, i]
-        
-        self.steps.append({
-            'L': L.tolist()
-        })
-        
+        for i in range(n - 1, -1, -1):
+            x[i] = (y[i] - np.dot(LT[i, i + 1:], x[i + 1:])) / LT[i, i]
         return x, iterations
-    
+
     def _is_symmetric_positive_definite(self):
-        """Vérifie si A est SDP"""
         if not np.allclose(self.A, self.A.T):
             return False
-        eigenvalues = np.linalg.eigvals(self.A)
-        return np.all(eigenvalues > 0)
-
-# ============================================================
-# 2. GESTION DES DONNÉES IEEE ET TOPOLOGIE
-# ============================================================
-
-class SmartGridData:
-    @staticmethod
-    def get_ieee_14():
-        """Réseau IEEE 14 nœuds (simplifié pour DC Power Flow)"""
-        n = 14
-        # Matrice des susceptances B' (approximation DC)
-        # Données basées sur le cas IEEE 14 bus standard
-        B_prime = np.array([
-            [6.250, -5.000, -1.250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [-5.000, 10.834, -1.667, -4.167, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [-1.250, -1.667, 12.917, -10.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, -4.167, -10.000, 21.353, -5.000, -2.083, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, -5.000, 9.333, 0, 0, -4.333, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, -2.083, 0, 5.000, -2.917, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, -2.917, 6.667, 0, 0, -3.750, 0, 0, 0, 0],
-            [0, 0, 0, 0, -4.333, 0, 0, 13.600, -6.000, -3.333, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, -6.000, 10.000, 0, -4.000, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, -3.333, -3.333, 0, 0, 14.000, -3.333, -3.333, -4.000],
-            [0, 0, 0, 0, 0, 0, 0, 0, -4.000, -3.333, 12.500, -2.500, -2.500, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, -3.333, -2.500, 5.833, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, -3.333, -2.500, 0, 5.833, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, -4.000, 0, 0, 0, 4.000]
-        ])
-        
-        # Vecteur b : Scénario standard IEEE 14
-        b = np.array([2.324, 0.183, -0.942, -0.478, -0.076, -0.112, 0.000, 
-                      0.000, -0.295, -0.090, -0.035, -0.061, -0.149, -0.270])
-        
-        # Coordonnées pour visualisation
-        coords = [
-            [0.5, 1.0], [0.3, 0.8], [0.7, 0.8], [0.5, 0.6], [0.2, 0.4],
-            [0.8, 0.4], [0.6, 0.3], [0.3, 0.2], [0.5, 0.1], [0.7, 0.2],
-            [0.1, 0.0], [0.3, -0.1], [0.5, -0.1], [0.7, 0.0]
-        ]
-        
-        return {
-            'A': B_prime.tolist(),
-            'b': b.tolist(),
-            'n': n,
-            'name': 'IEEE 14 Bus',
-            'coords': coords,
-            'slack_bus': 0  # Nœud 1 est le slack
-        }
-    
-    @staticmethod
-    def get_ieee_30():
-        """Générateur pour IEEE 30 (structure similaire, étendue)"""
-        n = 30
-        # Génération procédurale pour l'exemple (dans un vrai cas, données réelles)
-        A = np.zeros((n, n))
-        # Remplissage aléatoire mais structuré pour créer un vrai réseau
-        np.random.seed(30)
-        for i in range(n):
-            for j in range(i+1, min(i+4, n)):  # Chaque nœud connecté aux 3 suivants
-                b_ij = np.random.uniform(1, 10)
-                A[i, j] = -b_ij
-                A[j, i] = -b_ij
-                A[i, i] += b_ij
-                A[j, j] += b_ij
-        
-        # Scénario matin (pic de consommation)
-        b_morning = np.random.uniform(-0.5, 0.2, n)
-        b_morning[0] = 2.0  # Centrale
-        
-        return {
-            'A': A.tolist(),
-            'b': b_morning.tolist(),
-            'n': n,
-            'name': 'IEEE 30 Bus',
-            'slack_bus': 0
-        }
-    
-    @staticmethod
-    def get_ieee_118():
-        """Générateur pour IEEE 118 (grand réseau)"""
-        n = 118
-        # Structure creuse réaliste
-        A = np.zeros((n, n))
-        np.random.seed(118)
-        for i in range(n):
-            # Connectivité moyenne de 3-5 connexions par nœud
-            degree = np.random.randint(2, 6)
-            connections = np.random.choice([j for j in range(n) if j != i], 
-                                          size=min(degree, n-1), replace=False)
-            for j in connections:
-                if A[i, j] == 0:  # Éviter doublons
-                    b_ij = np.random.uniform(2, 15)
-                    A[i, j] = -b_ij
-                    A[j, i] = -b_ij
-                    A[i, i] += b_ij
-                    A[j, j] += b_ij
-        
-        b = np.random.uniform(-1.0, 0.5, n)
-        b[0] = 5.0  # Grosse centrale
-        
-        return {
-            'A': A.tolist(),
-            'b': b.tolist(),
-            'n': n,
-            'name': 'IEEE 118 Bus',
-            'slack_bus': 0
-        }
-
-# ============================================================
-# 3. SIMULATION DE PANNE ET DISPATCHING
-# ============================================================
-
-class GridSimulator:
-    def __init__(self, A, b, slack_bus=0):
-        self.A_original = np.array(A, dtype=float)
-        self.b = np.array(b, dtype=float)
-        self.n = len(b)
-        self.slack_bus = slack_bus
-        self.current_A = self.A_original.copy()
-        
-    def break_line(self, bus_from, bus_to):
-        """Simulation de rupture de ligne entre deux nœuds"""
-        if self.current_A[bus_from, bus_to] != 0:
-            # Retirer la connexion
-            b_ij = -self.current_A[bus_from, bus_to]
-            self.current_A[bus_from, bus_to] = 0
-            self.current_A[bus_to, bus_from] = 0
-            self.current_A[bus_from, bus_from] -= b_ij
-            self.current_A[bus_to, bus_to] -= b_ij
-            return True
-        return False
-    
-    def calculate_dispatch(self, generation_costs=None):
-        """
-        Dispatching économique : minimise coût de production
-        sous contrainte de flux
-        """
-        if generation_costs is None:
-            # Coûts quadratiques par défaut : c(P) = aP² + bP + c
-            generation_costs = [{'a': 0.01, 'b': 2.0} for _ in range(self.n)]
-        
-        # Simplification : résolution itérative avec ajustement des générations
-        # Dans une vraie implémentation, optimisation quadratique (quadprog)
-        
-        # Méthode simple : ajustement proportionnel des générations disponibles
-        x = np.zeros(self.n)
         try:
-            # Essayer de résoudre avec les pertes de ligne
-            solver = DirectSolver(self.current_A, self.b, 'lu')
-            result = solver.solve()
-            x = np.array(result['solution'])
-            status = 'success'
-            blackout_nodes = []
-        except Exception as e:
-            # Si échec, identifier les îlots noirs
-            status = 'blackout'
-            x = np.zeros(self.n)
-            # Détection simplifiée : nœuds non alimentés
-            blackout_nodes = list(range(self.n))  # Tous éteints dans ce cas simple
-            
-        return {
-            'status': status,
-            'angles': x.tolist(),
-            'blackout_nodes': blackout_nodes,
-            'flows': self._calculate_flows(x),
-            'matrix': self.current_A.tolist()
-        }
-    
-    def _calculate_flows(self, angles):
-        """Calcule les flux sur lignes à partir des angles"""
-        flows = []
-        for i in range(self.n):
-            for j in range(i+1, self.n):
-                if self.current_A[i, j] != 0:
-                    b_ij = -self.current_A[i, j]
-                    flow = b_ij * (angles[i] - angles[j])
-                    flows.append({
-                        'from': i,
-                        'to': j,
-                        'flow': float(flow),
-                        'capacity': float(b_ij * 0.5)  # Limite approximative
-                    })
-        return flows
+            np.linalg.cholesky(self.A)
+            return True
+        except Exception:
+            return False
+
 
 # ============================================================
-# 4. API ENDPOINTS
+# API ENDPOINTS
 # ============================================================
+
+@app.route('/api/health')
+def health():
+    return jsonify({'status': 'ok', 'message': 'Backend avec données IEEE réelles'})
+
 
 @app.route('/api/ieee/<int:size>')
 def get_ieee(size):
-    if size == 14:
-        return jsonify(SmartGridData.get_ieee_14())
-    elif size == 30:
-        return jsonify(SmartGridData.get_ieee_30())
-    elif size == 118:
-        return jsonify(SmartGridData.get_ieee_118())
-    return jsonify({'error': 'Taille non supportée'}), 400
-
-@app.route('/api/solve', methods=['POST'])
-def solve_system():
-    data = request.json
-    A = data['A']
-    b = data['b']
-    method = data.get('method', 'lu')
-    scenario = data.get('scenario', 'standard')  # matin, soir, standard
-    
-    # Modification du vecteur b selon scénario
-    b_vec = np.array(b)
-    if scenario == 'matin':
-        b_vec *= 1.3  # Pic de consommation
-    elif scenario == 'soir':
-        b_vec *= 0.8  # Consommation réduite
-    
     try:
-        solver = DirectSolver(A, b_vec.tolist(), method)
-        result = solver.solve()
-        result['method'] = method
-        result['scenario'] = scenario
-        
-        # Calcul des métriques supplémentaires
-        A_np = np.array(A)
-        cond_number = np.linalg.cond(A_np)
-        result['condition_number'] = float(cond_number)
-        result['complexity'] = f"O(n³) = O({len(b)}³) opérations"
-        
-        return jsonify(result)
+        if size == 14:
+            data = RealIEEEData.get_ieee_14_real()
+        elif size == 30:
+            data = RealIEEEData.get_ieee_30_real()
+        elif size == 118:
+            data = RealIEEEData.get_ieee_118_real()
+        else:
+            return jsonify({'error': 'Taille non supportée. Utilisez 14, 30 ou 118'}), 400
+        return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/solve', methods=['POST'])
+def solve_system():
+    data         = request.json
+    A_orig       = data['A']
+    b_orig       = data['b']
+    method       = data.get('method', 'lu')
+    scenario     = data.get('scenario', 'standard')
+    broken_lines = data.get('broken_lines', [])
+    slack_bus    = data.get('slack_bus', 0)
+
+    n     = len(b_orig)
+    b_vec = np.array(b_orig, dtype=float)
+
+    # Scénario de charge
+    if scenario == 'matin':
+        b_vec *= 1.3
+    elif scenario == 'soir':
+        b_vec *= 0.8
+
+    try:
+        # ── Étape 1 : modifier A selon les coupures ──────────────────
+        A_mod = apply_broken_lines(A_orig, broken_lines, n)
+
+        # ── Étape 2 : BFS → nœuds alimentés / blackout ───────────────
+        connected     = find_connected_nodes(A_mod, slack_bus, n)
+        blackout_nodes = [i for i in range(n) if i not in connected]
+
+        # ── Étape 3 : sous-système réduit (connectés, hors slack) ────
+        A_red, b_red, node_map = reduce_system(A_mod, b_vec, connected, slack_bus, n)
+
+        if A_red is None or len(node_map) == 0:
+            return jsonify({
+                'solution':       [0.0] + [None] * (n - 1),
+                'blackout_nodes': list(range(1, n)),
+                'lit_nodes':      [slack_bus],
+                'isolated_islands': True,
+                'method':         method,
+                'time':           0, 'iterations': 0,
+                'residual':       0, 'condition_number': 0,
+            })
+
+        # ── Étape 4 : résolution ──────────────────────────────────────
+        solver = DirectSolver(A_red.tolist(), b_red.tolist(), method)
+        result = solver.solve()
+
+        # ── Étape 5 : reconstruction vecteur θ complet (taille n) ────
+        theta_full = [None] * n
+        theta_full[slack_bus] = 0.0
+        for local_idx, global_idx in enumerate(node_map):
+            theta_full[global_idx] = float(result['solution'][local_idx])
+
+        try:
+            cond_number = float(np.linalg.cond(A_red))
+        except Exception:
+            cond_number = float('inf')
+
+        return jsonify({
+            'solution':         theta_full,
+            'time':             result['time'],
+            'iterations':       result['iterations'],
+            'residual':         result['residual'],
+            'condition_number': cond_number,
+            'method':           method,
+            'scenario':         scenario,
+            'blackout_nodes':   blackout_nodes,
+            'lit_nodes':        list(connected),
+            'isolated_islands': len(blackout_nodes) > 0,
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'method': method}), 500
+
+
 @app.route('/api/compare', methods=['POST'])
 def compare_methods():
-    """Compare les trois méthodes sur le même système"""
-    data = request.json
-    A = data['A']
-    b = data['b']
-    
+    data         = request.json
+    A            = data['A']
+    b            = data['b']
+    broken_lines = data.get('broken_lines', [])
+    slack_bus    = data.get('slack_bus', 0)
+    n            = len(b)
+
+    A_mod     = apply_broken_lines(A, broken_lines, n)
+    connected = find_connected_nodes(A_mod, slack_bus, n)
+    A_red, b_red, _ = reduce_system(A_mod, np.array(b), connected, slack_bus, n)
+
     methods = ['gauss', 'lu', 'cholesky']
     results = {}
-    
     for method in methods:
         try:
-            solver = DirectSolver(A, b, method)
+            solver = DirectSolver(A_red.tolist(), b_red.tolist(), method)
             res = solver.solve()
             results[method] = {
                 'time': res['time'],
                 'residual': res['residual'],
-                'iterations': res['iterations'],
-                'complexity': 'O(n³/3)' if method == 'cholesky' else 'O(2n³/3)',
-                'memory': 'n²/2' if method == 'cholesky' else 'n²'
+                'iterations': res['iterations']
             }
         except Exception as e:
             results[method] = {'error': str(e)}
-    
-    # Recommandation automatique
-    valid_methods = {k: v for k, v in results.items() if 'error' not in v}
-    if valid_methods:
-        best = min(valid_methods.items(), key=lambda x: x[1]['time'])
+
+    valid = {k: v for k, v in results.items() if 'error' not in v}
+    if valid:
+        best = min(valid.items(), key=lambda x: x[1]['time'])
         results['recommendation'] = {
             'method': best[0],
-            'reason': f"Plus rapide ({best[1]['time']:.4f}s) et stable (résidu: {best[1]['residual']:.2e})"
+            'reason': f"Plus rapide ({best[1]['time']:.4f}s)"
         }
-    
     return jsonify(results)
 
-@app.route('/api/break_line', methods=['POST'])
-def simulate_break():
-    """Simulation de rupture de ligne et dispatching d'urgence"""
-    data = request.json
-    A = data['A']
-    b = data['b']
-    line_from = data['from']
-    line_to = data['to']
-    
-    sim = GridSimulator(A, b)
-    
-    # Rupture
-    success = sim.break_line(line_from, line_to)
-    if not success:
-        return jsonify({'error': 'Ligne déjà inexistante'}), 400
-    
-    # Dispatching
-    dispatch = sim.calculate_dispatch()
-    
-    return jsonify({
-        'line_broken': {'from': line_from, 'to': line_to},
-        'new_matrix': sim.current_A.tolist(),
-        'dispatch': dispatch
-    })
-
-@socketio.on('connect')
-def handle_connect():
-    print('Client connecté')
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000)
+    print("🚀 Serveur Smart Grid - Données IEEE RÉELLES")
+    print("📡 API: http://localhost:5000/api/health")
+    print("📊 Données disponibles: IEEE 14, 30, 118 (Source: Matpower)")
+    socketio.run(app, debug=True, port=5000, host='0.0.0.0', allow_unsafe_werkzeug=True)

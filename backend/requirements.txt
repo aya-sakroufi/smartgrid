@@ -1,7 +1,19 @@
-flask==2.3.3
-flask-socketio==5.3.6
-flask-cors==4.0.0
-numpy==1.24.3
+f# Framework Web
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+
+# Serveur WebSocket
 python-engineio==4.7.1
 python-socketio==5.9.0
-werkzeug==2.3.7
+
+# Calcul numérique
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.11.2
+
+# Utilitaires
+python-dateutil==2.8.2
+pytz==2023.3
+six==1.16.0
