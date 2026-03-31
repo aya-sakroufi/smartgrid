@@ -1,4 +1,4 @@
-f# Framework Web
+# Framework Web
 Flask==2.3.3
 Flask-SocketIO==5.3.6
 Flask-CORS==4.0.0
@@ -12,6 +12,8 @@ python-socketio==5.9.0
 numpy==1.24.3
 pandas==2.0.3
 scipy==1.11.2
+pandapower==2.13.1
+
 
 # Utilitaires
 python-dateutil==2.8.2
