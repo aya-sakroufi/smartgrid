@@ -1,0 +1,126 @@
+.comparison-panel {
+  padding: 1rem;
+}
+
+.comparison-header {
+  margin-bottom: 1.5rem;
+}
+
+.comparison-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--primary);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.chart-container {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.chart-container h4 {
+  font-size: 0.875rem;
+  color: #888;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.recommendation-box {
+  background: linear-gradient(135deg, rgba(0, 40, 60, 0.6), rgba(0, 20, 40, 0.8));
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.recommendation-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.recommendation-icon {
+  color: var(--success);
+  filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.5));
+}
+
+.recommendation-header h4 {
+  color: var(--success);
+  font-size: 1.125rem;
+  margin-bottom: 0.5rem;
+}
+
+.recommendation-header p {
+  color: #aaa;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.methods-analysis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.method-card {
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.method-card.recommended {
+  border-color: var(--success);
+  background: rgba(0, 255, 136, 0.05);
+}
+
+.method-card strong {
+  display: block;
+  color: #e0e0e0;
+  margin-bottom: 0.5rem;
+}
+
+.method-card p {
+  font-size: 0.8125rem;
+  color: #888;
+  line-height: 1.4;
+  margin-bottom: 0.75rem;
+}
+
+.status {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status.ok {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--success);
+}
+
+.status.fail {
+  background: rgba(255, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+@media (max-width: 1024px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .methods-analysis {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,132 @@
+.matrix-viewer {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.matrix-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.matrix-header h4 {
+  color: var(--primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.matrix-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dimensions {
+  font-size: 0.75rem;
+  color: #666;
+  font-family: monospace;
+}
+
+.toggle-btn {
+  padding: 0.25rem 0.75rem;
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.matrix-container {
+  overflow: auto;
+  max-height: 400px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+.matrix-table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  width: 100%;
+}
+
+.cell {
+  padding: 4px 8px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-width: 60px;
+  color: #ccc;
+}
+
+.cell.diagonal {
+  background: rgba(0, 212, 255, 0.15);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.bracket {
+  font-size: 1.5rem;
+  color: #444;
+  padding: 0 4px;
+  vertical-align: middle;
+}
+
+.vector-column {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vector-row {
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.vector-row .positive {
+  color: var(--success);
+}
+
+.vector-row .negative {
+  color: var(--danger);
+}
+
+.vector-input {
+  width: 80px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+  text-align: right;
+}
+
+.vector-legend {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.legend-item.positive {
+  color: var(--success);
+}
+
+.legend-item.negative {
+  color: var(--danger);
+}
