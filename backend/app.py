@@ -1,7 +1,6 @@
 import numpy as np
-import pandas as pd
 from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from flask_cors import CORS
 import time
 import math
@@ -15,11 +14,12 @@ CORS(app, resources={
         "allow_headers": ["Content-Type"]
     }
 })
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading',
+                    logger=False, engineio_logger=False)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
 
 # ============================================================
-# DONNÉES IEEE RÉELLES (Source: Matpower / University of Washington)
+# DONNÉES IEEE RÉELLES
 # ============================================================
 
 class RealIEEEData:
@@ -30,11 +30,11 @@ class RealIEEEData:
         for i, j, x in branches:
             b = 1.0 / x if x != 0 else 0
             if i != j:
-                i_idx, j_idx = i - 1, j - 1
-                B[i_idx, j_idx] -= b
-                B[j_idx, i_idx] -= b
-                B[i_idx, i_idx] += b
-                B[j_idx, j_idx] += b
+                ii, jj = i - 1, j - 1
+                B[ii, jj] -= b
+                B[jj, ii] -= b
+                B[ii, ii] += b
+                B[jj, jj] += b
         return B
 
     @staticmethod
@@ -45,26 +45,32 @@ class RealIEEEData:
             (2,5,0.17388),(3,4,0.17103),(4,5,0.04211),(4,7,0.20912),
             (4,9,0.55618),(5,6,0.25202),(6,11,0.19890),(6,12,0.25581),
             (6,13,0.13027),(7,8,0.17615),(7,9,0.11001),(9,10,0.08450),
-            (9,14,0.27038),(10,11,0.19207),(12,13,0.19988),(13,14,0.34802)
+            (9,14,0.27038),(10,11,0.19207),(12,13,0.19988),(13,14,0.34802),
         ]
         B = RealIEEEData._build_admittance_matrix(n, branches)
+
+        # Puissances nettes en pu (base 100 MVA) — valeurs directes Matpower
+        # CORRECTION : on ne divise plus par 100 une 2e fois, les valeurs sont déjà en pu
         P_net = np.array([
-            2.3239, 0.1830,-0.9420,-0.4780,-0.0760,-0.1120,
-            0.0000, 0.0000,-0.2950,-0.0900,-0.0350,-0.0610,
-           -0.1350,-0.1490
-        ]) / 100.0
+            2.3239, 0.1830, -0.9420, -0.4780, -0.0760, -0.1120,
+            0.0000, 0.0000, -0.2950, -0.0900, -0.0350, -0.0610,
+           -0.1350, -0.1490
+        ])
+        # Bus slack absorbe le déséquilibre résiduel
+        P_net[0] = -float(np.sum(P_net[1:]))
+
         coords = [
-            [0.500,0.820],[0.220,0.640],[0.780,0.640],[0.500,0.480],
-            [0.150,0.320],[0.850,0.320],[0.680,0.220],[0.320,0.220],
-            [0.500,0.120],[0.680,0.120],[0.130,0.120],[0.320,0.080],
-            [0.500,0.060],[0.680,0.060],
+            [0.50,0.90],[0.25,0.72],[0.75,0.72],[0.50,0.54],
+            [0.18,0.38],[0.82,0.38],[0.67,0.28],[0.35,0.28],
+            [0.50,0.16],[0.67,0.16],[0.18,0.16],[0.35,0.08],
+            [0.50,0.08],[0.67,0.08],
         ]
         return {
             'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
             'name': 'IEEE 14 Bus (Real Data)', 'coords': coords,
             'slack_bus': 0, 'source': 'Matpower case14.m',
             'lines': len(branches),
-            'branches': [[i-1, j-1] for i, j, _ in branches]
+            'branches': [[i-1, j-1] for i, j, _ in branches],
         }
 
     @staticmethod
@@ -81,27 +87,32 @@ class RealIEEEData:
             (21,22,0.0116),(15,23,0.0419),(22,24,0.0280),(23,24,0.0233),
             (24,25,0.0985),(25,26,0.0238),(25,27,0.0389),(28,27,0.0195),
             (27,29,0.0378),(27,30,0.0410),(29,30,0.0355),(8,28,0.0437),
-            (6,28,0.0599)
+            (6,28,0.0599),
         ]
         B = RealIEEEData._build_admittance_matrix(n, branches)
+
+        # En pu — valeurs directes
         P_net = np.array([
             0.2604, 0.4020,-0.0240,-0.0760, 0.0000,-0.9420,
             0.0000,-0.3000,-0.0580,-0.1120, 0.0000,-0.0620,
             0.0000,-0.0820,-0.0700,-0.0350,-0.0900,-0.0320,
            -0.0950,-0.0220,-0.1750,-0.0350,-0.0320,-0.0870,
-           -0.0240,-0.0240,-0.0430,-0.0260,-0.0240,-0.1060
-        ]) / 100.0
+           -0.0240,-0.0240,-0.0430,-0.0260,-0.0240,-0.1060,
+        ])
+        P_net[0] = -float(np.sum(P_net[1:]))
+
         coords = []
         for i in range(n):
             angle = (2 * math.pi * i) / n - math.pi / 2
             r = 0.4 if i < 15 else 0.35
             coords.append([0.5 + r * math.cos(angle), 0.5 + r * math.sin(angle)])
+
         return {
             'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
             'name': 'IEEE 30 Bus (Real Data)', 'coords': coords,
             'slack_bus': 0, 'source': 'Matpower case30.m',
             'lines': len(branches),
-            'branches': [[i-1, j-1] for i, j, _ in branches]
+            'branches': [[i-1, j-1] for i, j, _ in branches],
         }
 
     @staticmethod
@@ -148,6 +159,8 @@ class RealIEEEData:
             (116,118,0.0220),(117,118,0.0220),
         ]
         B = RealIEEEData._build_admittance_matrix(n, branches)
+
+        # MW → pu (base 100 MVA) : division par 100 une seule fois
         P_gen_mw = {
             1:0,4:0,6:0,8:0,10:450,12:85,15:0,18:0,19:0,24:0,25:220,26:314,
             27:0,31:7,32:0,34:0,36:0,40:0,42:0,46:19,49:204,54:48,55:0,56:0,
@@ -170,10 +183,11 @@ class RealIEEEData:
         }
         P_net = np.zeros(n)
         for bus, mw in P_gen_mw.items():
-            P_net[bus - 1] += mw / 100.0
+            P_net[bus-1] += mw / 100.0
         for bus, mw in P_load_mw.items():
-            P_net[bus - 1] -= mw / 100.0
+            P_net[bus-1] -= mw / 100.0
         P_net[0] = -float(np.sum(P_net[1:]))
+
         coords = []
         cols = 12
         for i in range(n):
@@ -181,32 +195,28 @@ class RealIEEEData:
             col = i % cols
             coords.append([
                 0.05 + col * (0.90 / (cols - 1)),
-                0.05 + row * (0.90 / 9)
+                0.05 + row * (0.90 / 9),
             ])
+
         return {
             'A': B.tolist(), 'b': P_net.tolist(), 'n': n,
             'name': 'IEEE 118 Bus (Real Data)', 'coords': coords,
             'slack_bus': 0, 'source': 'Matpower case118.m',
             'lines': len(branches),
-            'branches': [[i-1, j-1] for i, j, _ in branches]
+            'branches': [[i-1, j-1] for i, j, _ in branches],
         }
 
 
 # ============================================================
-# UTILITAIRES TOPOLOGIE — coupure + BFS
+# UTILITAIRES TOPOLOGIE
 # ============================================================
 
 def apply_broken_lines(A, broken_lines, n):
-    """
-    Retire les lignes coupées de la matrice d'admittance.
-    Pour chaque coupure (i,j) : soustrait bij des diagonales,
-    remet les entrées hors-diagonales à zéro.
-    """
     A_mod = np.array(A, dtype=float)
     for line in broken_lines:
         i, j = int(line['from']), int(line['to'])
         if 0 <= i < n and 0 <= j < n:
-            bij = -A_mod[i, j]   # bij > 0 car entrée hors-diag est négative
+            bij = -A_mod[i, j]
             if bij > 0:
                 A_mod[i, i] -= bij
                 A_mod[j, j] -= bij
@@ -216,29 +226,21 @@ def apply_broken_lines(A, broken_lines, n):
 
 
 def find_connected_nodes(A_mod, slack_bus, n):
-    """
-    BFS depuis slack_bus sur le graphe de A_mod.
-    Retourne l'ensemble des nœuds atteignables (alimentés).
-    """
     visited = set()
     queue = deque([slack_bus])
     visited.add(slack_bus)
     while queue:
         node = queue.popleft()
-        for neighbor in range(n):
-            if neighbor not in visited and A_mod[node, neighbor] != 0:
-                visited.add(neighbor)
-                queue.append(neighbor)
+        for nb in range(n):
+            if nb not in visited and A_mod[node, nb] != 0:
+                visited.add(nb)
+                queue.append(nb)
     return visited
 
 
-def reduce_system(A_mod, b, connected_nodes, slack_bus, n):
-    """
-    Extrait le sous-système des nœuds connectés hors slack.
-    Retourne A_red, b_red, node_map (indices globaux dans l'ordre).
-    """
-    node_map = sorted([node for node in connected_nodes if node != slack_bus])
-    if len(node_map) == 0:
+def reduce_system(A_mod, b, connected_nodes, slack_bus):
+    node_map = sorted([nd for nd in connected_nodes if nd != slack_bus])
+    if not node_map:
         return None, None, node_map
     A_red = A_mod[np.ix_(node_map, node_map)]
     b_red = b[node_map]
@@ -251,138 +253,114 @@ def reduce_system(A_mod, b, connected_nodes, slack_bus, n):
 
 class DirectSolver:
     def __init__(self, A, b, method='lu'):
-        self.A = np.array(A, dtype=float)
-        self.b = np.array(b, dtype=float)
-        self.n = len(b)
+        self.A      = np.array(A, dtype=float)
+        self.b      = np.array(b, dtype=float)
+        self.n      = len(b)
         self.method = method
-        self.steps = []
+        self.steps  = []
 
     def solve(self):
-        t_start = time.time()
-        if self.method == 'gauss':
-            x, iterations = self._gauss_elimination()
-        elif self.method == 'lu':
-            x, iterations = self._lu_factorization()
-        elif self.method == 'cholesky':
-            x, iterations = self._cholesky()
-        else:
-            raise ValueError("Méthode inconnue")
-        t_end = time.time()
+        t0 = time.time()
+        if   self.method == 'gauss':    x, it = self._gauss_elimination()
+        elif self.method == 'lu':       x, it = self._lu_factorization()
+        elif self.method == 'cholesky': x, it = self._cholesky()
+        else: raise ValueError("Méthode inconnue")
         return {
-            'solution': x.tolist(),
-            'time': t_end - t_start,
-            'iterations': iterations,
-            'residual': float(np.linalg.norm(self.A @ x - self.b)),
-            'steps': self.steps
+            'solution':  x.tolist(),
+            'time':      time.time() - t0,
+            'iterations': it,
+            'residual':  float(np.linalg.norm(self.A @ x - self.b)),
         }
 
     def _gauss_elimination(self):
-        A = self.A.copy()
-        b = self.b.copy()
-        n = self.n
-        iterations = 0
+        A, b, n = self.A.copy(), self.b.copy(), self.n
+        it = 0
         for k in range(n - 1):
-            max_idx = np.argmax(np.abs(A[k:, k])) + k
-            if A[max_idx, k] == 0:
-                raise ValueError("Matrice singulière")
-            if max_idx != k:
-                A[[k, max_idx]] = A[[max_idx, k]]
-                b[[k, max_idx]] = b[[max_idx, k]]
+            mx = np.argmax(np.abs(A[k:, k])) + k
+            if A[mx, k] == 0: raise ValueError("Matrice singulière")
+            if mx != k:
+                A[[k, mx]] = A[[mx, k]]
+                b[[k, mx]] = b[[mx, k]]
             for i in range(k + 1, n):
                 if A[i, k] != 0:
-                    factor = A[i, k] / A[k, k]
-                    A[i, k:] -= factor * A[k, k:]
-                    b[i] -= factor * b[k]
-                    iterations += 1
+                    f = A[i, k] / A[k, k]
+                    A[i, k:] -= f * A[k, k:]
+                    b[i]      -= f * b[k]
+                    it += 1
             self.steps.append({'step': k, 'matrix': A.copy().tolist()})
         x = np.zeros(n)
         for i in range(n - 1, -1, -1):
-            x[i] = (b[i] - np.dot(A[i, i + 1:], x[i + 1:])) / A[i, i]
-            iterations += 1
-        return x, iterations
+            x[i] = (b[i] - np.dot(A[i, i+1:], x[i+1:])) / A[i, i]
+            it += 1
+        return x, it
 
     def _lu_factorization(self):
-        A = self.A.copy()
-        n = self.n
-        L = np.eye(n)
-        P = np.eye(n)
-        iterations = 0
+        A, n = self.A.copy(), self.n
+        L, P = np.eye(n), np.eye(n)
+        it = 0
         for k in range(n - 1):
-            max_idx = np.argmax(np.abs(A[k:, k])) + k
-            if k != max_idx:
-                A[[k, max_idx]] = A[[max_idx, k]]
-                P[[k, max_idx]] = P[[max_idx, k]]
-                if k > 0:
-                    L[[k, max_idx], :k] = L[[max_idx, k], :k]
+            mx = np.argmax(np.abs(A[k:, k])) + k
+            if k != mx:
+                A[[k, mx]] = A[[mx, k]]
+                P[[k, mx]] = P[[mx, k]]
+                if k > 0: L[[k, mx], :k] = L[[mx, k], :k]
             for i in range(k + 1, n):
                 L[i, k] = A[i, k] / A[k, k]
                 A[i, k:] -= L[i, k] * A[k, k:]
-                iterations += 1
-        U = A
-        Pb = P @ self.b
+                it += 1
+        U, Pb = A, P @ self.b
         y = np.zeros(n)
         for i in range(n):
             y[i] = Pb[i] - np.dot(L[i, :i], y[:i])
         x = np.zeros(n)
         for i in range(n - 1, -1, -1):
-            x[i] = (y[i] - np.dot(U[i, i + 1:], x[i + 1:])) / U[i, i]
-        return x, iterations
+            x[i] = (y[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
+        return x, it
 
     def _cholesky(self):
-        if not self._is_symmetric_positive_definite():
+        if not self._is_spd():
             raise ValueError(
                 "Matrice non symétrique définie positive — "
                 "Cholesky inapplicable sur la matrice Y-bus DC"
             )
-        n = self.n
-        L = np.zeros((n, n))
-        iterations = 0
+        n, L = self.n, np.zeros((self.n, self.n))
+        it = 0
         for j in range(n):
-            sum_diag = sum(L[j, k] ** 2 for k in range(j))
-            L[j, j] = np.sqrt(self.A[j, j] - sum_diag)
+            L[j, j] = np.sqrt(self.A[j, j] - sum(L[j, k]**2 for k in range(j)))
             for i in range(j + 1, n):
-                sum_off = sum(L[i, k] * L[j, k] for k in range(j))
-                L[i, j] = (self.A[i, j] - sum_off) / L[j, j]
-                iterations += 1
+                L[i, j] = (self.A[i, j] - sum(L[i,k]*L[j,k] for k in range(j))) / L[j, j]
+                it += 1
         y = np.zeros(n)
         for i in range(n):
             y[i] = (self.b[i] - np.dot(L[i, :i], y[:i])) / L[i, i]
         x = np.zeros(n)
         LT = L.T
         for i in range(n - 1, -1, -1):
-            x[i] = (y[i] - np.dot(LT[i, i + 1:], x[i + 1:])) / LT[i, i]
-        return x, iterations
+            x[i] = (y[i] - np.dot(LT[i, i+1:], x[i+1:])) / LT[i, i]
+        return x, it
 
-    def _is_symmetric_positive_definite(self):
-        if not np.allclose(self.A, self.A.T):
-            return False
-        try:
-            np.linalg.cholesky(self.A)
-            return True
-        except Exception:
-            return False
+    def _is_spd(self):
+        if not np.allclose(self.A, self.A.T): return False
+        try: np.linalg.cholesky(self.A); return True
+        except Exception: return False
 
 
 # ============================================================
-# API ENDPOINTS
+# API
 # ============================================================
 
 @app.route('/api/health')
 def health():
-    return jsonify({'status': 'ok', 'message': 'Backend avec données IEEE réelles'})
+    return jsonify({'status': 'ok', 'message': 'Backend Smart Grid IEEE'})
 
 
 @app.route('/api/ieee/<int:size>')
 def get_ieee(size):
     try:
-        if size == 14:
-            data = RealIEEEData.get_ieee_14_real()
-        elif size == 30:
-            data = RealIEEEData.get_ieee_30_real()
-        elif size == 118:
-            data = RealIEEEData.get_ieee_118_real()
-        else:
-            return jsonify({'error': 'Taille non supportée. Utilisez 14, 30 ou 118'}), 400
+        if   size == 14:  data = RealIEEEData.get_ieee_14_real()
+        elif size == 30:  data = RealIEEEData.get_ieee_30_real()
+        elif size == 118: data = RealIEEEData.get_ieee_118_real()
+        else: return jsonify({'error': 'Utilisez 14, 30 ou 118'}), 400
         return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -396,65 +374,52 @@ def solve_system():
     method       = data.get('method', 'lu')
     scenario     = data.get('scenario', 'standard')
     broken_lines = data.get('broken_lines', [])
-    slack_bus    = data.get('slack_bus', 0)
+    slack_bus    = int(data.get('slack_bus', 0))
+    n            = len(b_orig)
 
-    n     = len(b_orig)
     b_vec = np.array(b_orig, dtype=float)
-
-    # Scénario de charge
-    if scenario == 'matin':
-        b_vec *= 1.3
-    elif scenario == 'soir':
-        b_vec *= 0.8
+    if scenario == 'matin': b_vec *= 1.3
+    elif scenario == 'soir': b_vec *= 0.8
 
     try:
-        # ── Étape 1 : modifier A selon les coupures ──────────────────
-        A_mod = apply_broken_lines(A_orig, broken_lines, n)
+        A_mod     = apply_broken_lines(A_orig, broken_lines, n)
+        connected = find_connected_nodes(A_mod, slack_bus, n)
+        blackout  = [i for i in range(n) if i not in connected]
 
-        # ── Étape 2 : BFS → nœuds alimentés / blackout ───────────────
-        connected     = find_connected_nodes(A_mod, slack_bus, n)
-        blackout_nodes = [i for i in range(n) if i not in connected]
+        A_red, b_red, node_map = reduce_system(A_mod, b_vec, connected, slack_bus)
 
-        # ── Étape 3 : sous-système réduit (connectés, hors slack) ────
-        A_red, b_red, node_map = reduce_system(A_mod, b_vec, connected, slack_bus, n)
-
-        if A_red is None or len(node_map) == 0:
+        if A_red is None:
             return jsonify({
-                'solution':       [0.0] + [None] * (n - 1),
+                'solution': [0.0] + [None]*(n-1),
                 'blackout_nodes': list(range(1, n)),
-                'lit_nodes':      [slack_bus],
+                'lit_nodes': [slack_bus],
                 'isolated_islands': True,
-                'method':         method,
-                'time':           0, 'iterations': 0,
-                'residual':       0, 'condition_number': 0,
+                'method': method, 'time': 0, 'iterations': 0,
+                'residual': 0, 'condition_number': 0,
             })
 
-        # ── Étape 4 : résolution ──────────────────────────────────────
-        solver = DirectSolver(A_red.tolist(), b_red.tolist(), method)
-        result = solver.solve()
+        res = DirectSolver(A_red.tolist(), b_red.tolist(), method).solve()
 
-        # ── Étape 5 : reconstruction vecteur θ complet (taille n) ────
-        theta_full = [None] * n
-        theta_full[slack_bus] = 0.0
-        for local_idx, global_idx in enumerate(node_map):
-            theta_full[global_idx] = float(result['solution'][local_idx])
+        # Reconstruction vecteur θ complet
+        theta = [None] * n
+        theta[slack_bus] = 0.0
+        for loc, glob in enumerate(node_map):
+            theta[glob] = float(res['solution'][loc])
 
-        try:
-            cond_number = float(np.linalg.cond(A_red))
-        except Exception:
-            cond_number = float('inf')
+        try:    cond = float(np.linalg.cond(A_red))
+        except: cond = float('inf')
 
         return jsonify({
-            'solution':         theta_full,
-            'time':             result['time'],
-            'iterations':       result['iterations'],
-            'residual':         result['residual'],
-            'condition_number': cond_number,
+            'solution':         theta,
+            'time':             res['time'],
+            'iterations':       res['iterations'],
+            'residual':         res['residual'],
+            'condition_number': cond,
             'method':           method,
             'scenario':         scenario,
-            'blackout_nodes':   blackout_nodes,
+            'blackout_nodes':   blackout,
             'lit_nodes':        list(connected),
-            'isolated_islands': len(blackout_nodes) > 0,
+            'isolated_islands': len(blackout) > 0,
         })
 
     except Exception as e:
@@ -467,39 +432,30 @@ def compare_methods():
     A            = data['A']
     b            = data['b']
     broken_lines = data.get('broken_lines', [])
-    slack_bus    = data.get('slack_bus', 0)
+    slack_bus    = int(data.get('slack_bus', 0))
     n            = len(b)
 
     A_mod     = apply_broken_lines(A, broken_lines, n)
     connected = find_connected_nodes(A_mod, slack_bus, n)
-    A_red, b_red, _ = reduce_system(A_mod, np.array(b), connected, slack_bus, n)
+    A_red, b_red, _ = reduce_system(A_mod, np.array(b, dtype=float), connected, slack_bus)
 
-    methods = ['gauss', 'lu', 'cholesky']
     results = {}
-    for method in methods:
+    for method in ['gauss', 'lu', 'cholesky']:
         try:
-            solver = DirectSolver(A_red.tolist(), b_red.tolist(), method)
-            res = solver.solve()
-            results[method] = {
-                'time': res['time'],
-                'residual': res['residual'],
-                'iterations': res['iterations']
-            }
+            res = DirectSolver(A_red.tolist(), b_red.tolist(), method).solve()
+            results[method] = {'time': res['time'], 'residual': res['residual'], 'iterations': res['iterations']}
         except Exception as e:
             results[method] = {'error': str(e)}
 
     valid = {k: v for k, v in results.items() if 'error' not in v}
     if valid:
         best = min(valid.items(), key=lambda x: x[1]['time'])
-        results['recommendation'] = {
-            'method': best[0],
-            'reason': f"Plus rapide ({best[1]['time']:.4f}s)"
-        }
+        results['recommendation'] = {'method': best[0], 'reason': f"Plus rapide ({best[1]['time']*1000:.2f}ms)"}
+
     return jsonify(results)
 
 
 if __name__ == '__main__':
-    print("🚀 Serveur Smart Grid - Données IEEE RÉELLES")
-    print("📡 API: http://localhost:5000/api/health")
-    print("📊 Données disponibles: IEEE 14, 30, 118 (Source: Matpower)")
+    print("🚀 Serveur Smart Grid")
+    print("📡 http://localhost:5000/api/health")
     socketio.run(app, debug=True, port=5000, host='0.0.0.0', allow_unsafe_werkzeug=True)

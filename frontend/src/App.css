@@ -1262,4 +1262,9 @@ body {
     flex-wrap: wrap;
     gap: 12px;
   }
+  .legend-item .dot.slack {
+  background: #facc15;
+  box-shadow: 0 0 10px #facc15;
+  border: 2px solid #ca8a04;
+}
 }
