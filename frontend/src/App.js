@@ -113,8 +113,6 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
   if (!network?.coords) return null;
 
   const coords = network.n === 14 ? IEEE14_COORDS : network.coords;
-  // MODIFICATION: Utiliser network.A pour l'affichage afin de garder les lignes coupées visibles
-  // La matrice modifiedA est uniquement utilisée pour les calculs (résolution)
   const displayA = network.A;
 
   const nodeR    = network.n <= 14 ? 0.038 : network.n <= 30 ? 0.030 : 0.022;
@@ -202,10 +200,6 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
                     strokeDasharray={broken ? '0.025,0.015' : 'none'}
                     opacity={broken ? 0.8 : (hasResults && (blackoutNodes.has(i) || blackoutNodes.has(j)) ? 0.3 : 1)}
                   />
-                  {broken && (
-                    <text x={(x1+x2)/2} y={(y1+y2)/2} fontSize={fontSize * 0.9}
-                      fill="#ef4444" textAnchor="middle" dominantBaseline="middle">✕</text>
-                  )}
                 </g>
               );
             })
@@ -794,12 +788,7 @@ const App = () => {
               disabled={loading || selectedMethods.length === 0}>
               {loading ? '⏳ Calcul...' : '🚀 Lancer résolution'}
             </button>
-            {selectedMethods.length >= 2 && (
-              <button onClick={() => generateComparison(results)}
-                className="btn compare-btn" disabled={Object.keys(results).length < 2}>
-                ⚖️ Comparer méthodes
-              </button>
-            )}
+            {/* SUPPRESSION DU BOUTON COMPARER MÉTHODES */}
           </div>
 
           <div className="section danger-zone">
@@ -891,7 +880,7 @@ const App = () => {
                     selectedMethods={selectedMethods}
                   />
                 </div>
-                {/* LÉGENDE CORRIGÉE AVEC POINT JAUNE POUR BUS SLACK */}
+                {/* LÉGENDE */}
                 <div className="legend">
                   <div className="legend-item">
                     <span className="dot lit"></span>
@@ -922,7 +911,7 @@ const App = () => {
                   </div>
                   <div className="legend-item">
                     <span style={{ display:'inline-block', width:24, height:2, background:'#ef4444', marginRight:5, verticalAlign:'middle' }}></span>
-                    <span>Ligne coupée</span>
+                    <span>Ligne interrompue</span>
                   </div>
                 </div>
               </div>

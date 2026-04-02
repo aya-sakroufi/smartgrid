@@ -275,6 +275,7 @@ class DirectSolver:
     def _gauss_elimination(self):
         A, b, n = self.A.copy(), self.b.copy(), self.n
         it = 0
+        # Compteur d'opérations de factorisation (O(n³/3))
         for k in range(n - 1):
             mx = np.argmax(np.abs(A[k:, k])) + k
             if A[mx, k] == 0: raise ValueError("Matrice singulière")
@@ -282,22 +283,25 @@ class DirectSolver:
                 A[[k, mx]] = A[[mx, k]]
                 b[[k, mx]] = b[[mx, k]]
             for i in range(k + 1, n):
+                # CORRECTION: Compter toutes les itérations pour cohérence avec LU
+                it += 1
                 if A[i, k] != 0:
                     f = A[i, k] / A[k, k]
                     A[i, k:] -= f * A[k, k:]
                     b[i]      -= f * b[k]
-                    it += 1
             self.steps.append({'step': k, 'matrix': A.copy().tolist()})
+        # Substitution arrière (O(n²/2)) - on ajoute aussi au comptage pour cohérence totale
         x = np.zeros(n)
         for i in range(n - 1, -1, -1):
             x[i] = (b[i] - np.dot(A[i, i+1:], x[i+1:])) / A[i, i]
-            it += 1
+            it += 1  # Comptage des substitutions
         return x, it
 
     def _lu_factorization(self):
         A, n = self.A.copy(), self.n
         L, P = np.eye(n), np.eye(n)
         it = 0
+        # Factorisation LU (O(n³/3))
         for k in range(n - 1):
             mx = np.argmax(np.abs(A[k:, k])) + k
             if k != mx:
@@ -309,12 +313,16 @@ class DirectSolver:
                 A[i, k:] -= L[i, k] * A[k, k:]
                 it += 1
         U, Pb = A, P @ self.b
+        # Substitution avant Ly = Pb (O(n²/2))
         y = np.zeros(n)
         for i in range(n):
             y[i] = Pb[i] - np.dot(L[i, :i], y[:i])
+            it += 1
+        # Substitution arrière Ux = y (O(n²/2))
         x = np.zeros(n)
         for i in range(n - 1, -1, -1):
             x[i] = (y[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
+            it += 1
         return x, it
 
     def _cholesky(self):
@@ -325,18 +333,23 @@ class DirectSolver:
             )
         n, L = self.n, np.zeros((self.n, self.n))
         it = 0
+        # Factorisation de Cholesky (O(n³/3))
         for j in range(n):
             L[j, j] = np.sqrt(self.A[j, j] - sum(L[j, k]**2 for k in range(j)))
             for i in range(j + 1, n):
                 L[i, j] = (self.A[i, j] - sum(L[i,k]*L[j,k] for k in range(j))) / L[j, j]
                 it += 1
+        # Substitution avant (O(n²/2))
         y = np.zeros(n)
         for i in range(n):
             y[i] = (self.b[i] - np.dot(L[i, :i], y[:i])) / L[i, i]
-        x = np.zeros(n)
+            it += 1
+        # Substitution arrière (O(n²/2))
         LT = L.T
+        x = np.zeros(n)
         for i in range(n - 1, -1, -1):
             x[i] = (y[i] - np.dot(LT[i, i+1:], x[i+1:])) / LT[i, i]
+            it += 1
         return x, it
 
     def _is_spd(self):
