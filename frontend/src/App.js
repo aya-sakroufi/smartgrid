@@ -3,30 +3,121 @@ import './App.css';
 
 const API_URL = 'http://localhost:5000';
 
-// ============================================================
-// COORDONNÉES IEEE 14 — layout hiérarchique centré dans [0.05, 0.95]
-// ============================================================
+// Descriptions de performance par méthode - COULEURS DISTINCTES
+const PERFORMANCE_DESC = {
+  gauss: { 
+    label: 'Classique', 
+    detail: 'O(n³) - Simple mais instable',
+    color: '#ff6b6b',
+    recommendation: 'Bon pour petits systèmes et prototypage rapide'
+  },
+  lu: { 
+    label: 'Stable & Optimal', 
+    detail: 'Factorisation réutilisable',
+    color: '#4ecdc4',
+    recommendation: 'Choix standard pour systèmes de taille moyenne à grande'
+  },
+  cholesky: { 
+    label: 'Ultra-rapide', 
+    detail: '2× plus vite (si SDP)',
+    color: '#ffe66d',
+    recommendation: 'Idéal pour matrices symétriques définies positives'
+  }
+};
+
 const IEEE14_COORDS = [
-  [0.50, 0.90],  // Bus 1 (index 0)  Slack  — haut centre
-  [0.25, 0.72],  // Bus 2 (index 1)
-  [0.75, 0.72],  // Bus 3 (index 2)
-  [0.50, 0.54],  // Bus 4 (index 3)  centre
-  [0.18, 0.38],  // Bus 5 (index 4)
-  [0.82, 0.38],  // Bus 6 (index 5)
-  [0.67, 0.28],  // Bus 7 (index 6)
-  [0.35, 0.28],  // Bus 8 (index 7)
-  [0.50, 0.16],  // Bus 9 (index 8)
-  [0.67, 0.16],  // Bus 10 (index 9)
-  [0.18, 0.16],  // Bus 11 (index 10)
-  [0.35, 0.08],  // Bus 12 (index 11)
-  [0.50, 0.08],  // Bus 13 (index 12)
-  [0.67, 0.08],  // Bus 14 (index 13)
+  [0.50, 0.90], [0.25, 0.72], [0.75, 0.72], [0.50, 0.54],
+  [0.18, 0.38], [0.82, 0.38], [0.67, 0.28], [0.35, 0.28],
+  [0.50, 0.16], [0.67, 0.16], [0.18, 0.16], [0.35, 0.08],
+  [0.50, 0.08], [0.67, 0.08],
 ];
 
 // ============================================================
-// COMPOSANT NetworkSVG — zoom/pan
+// FONCTIONS DE PROPAGATION RÉALISTE SELON LE CÂBLAGE
 // ============================================================
-const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, results, selectedMethods }) => {
+
+const getConnectedNeighbors = (network, node, brokenLinesSet) => {
+  const neighbors = [];
+  const n = network.n;
+  for (let i = 0; i < n; i++) {
+    if (i !== node && network.A[node][i] !== 0) {
+      const lineKey1 = `${Math.min(node, i)}-${Math.max(node, i)}`;
+      if (!brokenLinesSet.has(lineKey1)) {
+        neighbors.push(i);
+      }
+    }
+  }
+  return neighbors;
+};
+
+const getRealisticPropagationOrder = (network, slackBus, brokenLines) => {
+  if (!network || !network.A) return [];
+  
+  const brokenLinesSet = new Set(
+    brokenLines.map(l => `${Math.min(l.from, l.to)}-${Math.max(l.from, l.to)}`)
+  );
+  
+  const n = network.n;
+  const visited = new Set([slackBus]);
+  const order = [{ node: slackBus, parent: null, depth: 0, lineKey: null }];
+  const queue = [{ node: slackBus, depth: 0 }];
+  
+  while (queue.length > 0) {
+    const { node, depth } = queue.shift();
+    const neighbors = getConnectedNeighbors(network, node, brokenLinesSet);
+    
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        const lineKey = `${Math.min(node, neighbor)}-${Math.max(node, neighbor)}`;
+        order.push({ 
+          node: neighbor, 
+          parent: node, 
+          depth: depth + 1,
+          lineKey: lineKey
+        });
+        queue.push({ node: neighbor, depth: depth + 1 });
+      }
+    }
+  }
+  
+  return order;
+};
+
+const findIslandsAfterBreaks = (network, slackBus, brokenLines) => {
+  const brokenLinesSet = new Set(
+    brokenLines.map(l => `${Math.min(l.from, l.to)}-${Math.max(l.from, l.to)}`)
+  );
+  
+  const n = network.n;
+  const visited = new Set([slackBus]);
+  const queue = [slackBus];
+  
+  while (queue.length > 0) {
+    const node = queue.shift();
+    const neighbors = getConnectedNeighbors(network, node, brokenLinesSet);
+    
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  
+  const blackoutNodes = [];
+  for (let i = 0; i < n; i++) {
+    if (!visited.has(i)) blackoutNodes.push(i);
+  }
+  
+  return { connected: Array.from(visited), blackout: blackoutNodes };
+};
+
+// ============================================================
+// COMPOSANT NetworkSVG
+// ============================================================
+
+const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, animatingNodes, activeLines, currentLine }) => {
   const svgRef = useRef(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -67,6 +158,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
     setStartPan({ x: e.clientX, y: e.clientY });
     setStartTransform({ x: transform.x, y: transform.y });
   };
+  
   const handleMouseMove = useCallback((e) => {
     if (!isPanning) return;
     const rect = svgRef.current.getBoundingClientRect();
@@ -76,8 +168,9 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
       y: startTransform.y + (e.clientY - startPan.y) / rect.height,
     }));
   }, [isPanning, startPan, startTransform]);
+  
   const handleMouseUp = () => setIsPanning(false);
-
+  
   const handleTouchStart = (e) => {
     if (e.touches.length === 1) {
       setIsPanning(true);
@@ -90,6 +183,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
       lastTouchDist.current = Math.sqrt(dx * dx + dy * dy);
     }
   };
+  
   const handleTouchMove = (e) => {
     if (e.touches.length === 1 && isPanning) {
       const rect = svgRef.current.getBoundingClientRect();
@@ -107,6 +201,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
       lastTouchDist.current = dist;
     }
   };
+  
   const handleTouchEnd = () => { setIsPanning(false); lastTouchDist.current = null; };
   const resetZoom = () => setTransform({ x: 0, y: 0, scale: 1 });
 
@@ -114,15 +209,13 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
 
   const coords = network.n === 14 ? IEEE14_COORDS : network.coords;
   const displayA = network.A;
-
-  const nodeR    = network.n <= 14 ? 0.038 : network.n <= 30 ? 0.030 : 0.022;
+  const nodeR = network.n <= 14 ? 0.038 : network.n <= 30 ? 0.030 : 0.022;
   const fontSize = network.n <= 14 ? 0.040 : network.n <= 30 ? 0.032 : 0.024;
-  const strokeW  = network.n <= 30 ? 0.008 : 0.005;
-  const hasResults = litNodes.size > 0;
+  const strokeW = network.n <= 30 ? 0.008 : 0.005;
+  const hasResults = litNodes.size > 0 || animatingNodes.size > 0;
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      {/* Boutons zoom */}
       <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {[
           { label: '+', fn: () => setTransform(p => ({ ...p, scale: Math.min(p.scale * 1.3, 12) })), title: 'Zoom +' },
@@ -163,6 +256,10 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
             <stop offset="0%" stopColor="#4ade80" />
             <stop offset="100%" stopColor="#16a34a" />
           </radialGradient>
+          <radialGradient id="nodeGradientAnimating" cx="30%" cy="30%">
+            <stop offset="0%" stopColor="#86efac" />
+            <stop offset="100%" stopColor="#22c55e" />
+          </radialGradient>
           <radialGradient id="blackoutGradient" cx="30%" cy="30%">
             <stop offset="0%" stopColor="#f87171" />
             <stop offset="100%" stopColor="#dc2626" />
@@ -175,10 +272,26 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
             <feGaussianBlur stdDeviation="0.010" result="coloredBlur"/>
             <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
+          <filter id="glowAnimating">
+            <feGaussianBlur stdDeviation="0.015" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowLine">
+            <feGaussianBlur stdDeviation="0.008" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowCurrent">
+            <feGaussianBlur stdDeviation="0.012" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <linearGradient id="lineFlowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
+            <stop offset="50%" stopColor="#86efac" stopOpacity="1" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.2" />
+          </linearGradient>
         </defs>
 
         <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-          {/* ── Lignes basées sur la matrice originale (pour garder les lignes coupées visibles) ── */}
           {displayA.map((row, i) =>
             row.map((val, j) => {
               if (j <= i || val === 0) return null;
@@ -186,90 +299,163 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
               if (!c1 || !c2) return null;
               const [x1, y1] = c1, [x2, y2] = c2;
               const broken = isLineBroken(i, j);
+              
+              const lineKey = `${Math.min(i,j)}-${Math.max(i,j)}`;
+              const isActive = activeLines.has(lineKey);
+              const isCurrentLine = currentLine === lineKey;
+              const bothNodesLit = litNodes.has(i) && litNodes.has(j);
+              const oneNodeAnimating = animatingNodes.has(i) || animatingNodes.has(j);
+              
               let lineColor = '#374151';
-              if (broken) lineColor = '#ef4444';
-              else if (hasResults) {
-                if (litNodes.has(i) && litNodes.has(j)) lineColor = '#22c55e';
-                else if (blackoutNodes.has(i) || blackoutNodes.has(j)) lineColor = '#1f2937';
+              let lineWidth = strokeW;
+              let lineOpacity = 0.6;
+              let filter = '';
+              let glowEffect = false;
+              
+              if (broken) {
+                lineColor = '#ef4444';
+                lineWidth = strokeW * 0.8;
+                lineOpacity = 0.9;
+              } else if (isCurrentLine) {
+                lineColor = '#86efac';
+                lineWidth = strokeW * 3;
+                lineOpacity = 1;
+                filter = 'url(#glowCurrent)';
+                glowEffect = true;
+              } else if (isActive) {
+                lineColor = '#22c55e';
+                lineWidth = strokeW * 2;
+                lineOpacity = 0.9;
+                filter = 'url(#glowLine)';
+              } else if (bothNodesLit) {
+                lineColor = '#22c55e';
+                lineWidth = strokeW * 1.2;
+                lineOpacity = 0.7;
+              } else if (oneNodeAnimating) {
+                lineColor = '#4ade80';
+                lineWidth = strokeW * 1.5;
+                lineOpacity = 0.5;
+              } else if (blackoutNodes.has(i) || blackoutNodes.has(j)) {
+                lineColor = '#1f2937';
+                lineOpacity = 0.2;
               }
+              
               return (
                 <g key={`line-${i}-${j}`}>
                   <line x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke={lineColor}
-                    strokeWidth={broken ? strokeW * 0.7 : strokeW}
+                    stroke="#1f2937" strokeWidth={strokeW} opacity={0.4} />
+                  <line x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={lineColor} strokeWidth={lineWidth}
                     strokeDasharray={broken ? '0.025,0.015' : 'none'}
-                    opacity={broken ? 0.8 : (hasResults && (blackoutNodes.has(i) || blackoutNodes.has(j)) ? 0.3 : 1)}
-                  />
+                    opacity={lineOpacity} filter={filter}
+                    style={glowEffect ? { animation: 'electricPulse 0.3s ease-in-out infinite alternate' } : 
+                           isActive ? { animation: 'linePulse 0.8s ease-in-out infinite alternate' } : {}} />
+                  {(isCurrentLine || isActive) && !broken && (
+                    <>
+                      <line x1={x1} y1={y1} x2={x2} y2={y2}
+                        stroke="url(#lineFlowGradient)" strokeWidth={lineWidth * 1.5}
+                        opacity={0.6} filter="url(#glowCurrent)" />
+                      <circle r={nodeR * 0.25} fill="#ffffff" filter="url(#glowCurrent)">
+                        <animateMotion dur={isCurrentLine ? "0.4s" : "1s"} repeatCount="indefinite"
+                          path={`M${x1},${y1} L${x2},${y2}`} />
+                      </circle>
+                      {isCurrentLine && (
+                        <circle r={nodeR * 0.15} fill="#ffffff" opacity="0.8">
+                          <animateMotion dur="0.4s" begin="0.2s" repeatCount="indefinite"
+                            path={`M${x1},${y1} L${x2},${y2}`} />
+                        </circle>
+                      )}
+                    </>
+                  )}
                 </g>
               );
             })
           )}
 
-          {/* ── Nœuds ── */}
           {coords.map(([x, y], i) => {
             if (x === undefined || y === undefined) return null;
             const isBlackout = hasResults && blackoutNodes.has(i);
-            const isLit      = hasResults && litNodes.has(i);
-            const isSlack    = i === (network.slack_bus ?? 0);
-            let fill   = '#1f2937';
+            const isLit = hasResults && litNodes.has(i);
+            const isAnimating = animatingNodes.has(i);
+            const isSlack = i === (network.slack_bus ?? 0);
+            
+            let fill = '#1f2937';
             let stroke = '#4b5563';
             let filter = '';
-            if (isBlackout) { fill = 'url(#blackoutGradient)'; stroke = '#991b1b'; filter = 'url(#glowRed)'; }
-            else if (isLit)  { fill = isSlack ? '#facc15' : 'url(#nodeGradient)'; stroke = isSlack ? '#ca8a04' : '#4ade80'; filter = 'url(#glowGreen)'; }
-
-            const busNumber = i + 1;
+            let r = nodeR;
+            let pulseAnim = false;
+            
+            if (isBlackout) { 
+              fill = 'url(#blackoutGradient)'; 
+              stroke = '#991b1b'; 
+              filter = 'url(#glowRed)'; 
+            } else if (isLit)  { 
+              fill = isSlack ? '#facc15' : 'url(#nodeGradient)'; 
+              stroke = isSlack ? '#ca8a04' : '#4ade80'; 
+              filter = 'url(#glowGreen)'; 
+              r = nodeR * 1.15;
+            } else if (isAnimating) {
+              fill = 'url(#nodeGradientAnimating)';
+              stroke = '#4ade80';
+              filter = 'url(#glowAnimating)';
+              r = nodeR * 1.4;
+              pulseAnim = true;
+            }
 
             return (
               <g key={`node-${i}`}>
-                {(isLit || isBlackout) && (
-                  <circle cx={x} cy={y} r={nodeR * 1.6}
-                    fill={isBlackout ? '#dc2626' : '#4ade80'} opacity={0.15} />
+                {(isLit || isAnimating) && !isBlackout && (
+                  <circle cx={x} cy={y} r={r * 2}
+                    fill={isAnimating ? '#22c55e' : '#4ade80'} 
+                    opacity={isAnimating ? 0.3 : 0.15}>
+                    {isAnimating && (
+                      <>
+                        <animate attributeName="r" values={`${r*2};${r*2.8};${r*2}`} dur="0.5s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0.3;0.05;0.3" dur="0.5s" repeatCount="indefinite" />
+                      </>
+                    )}
+                  </circle>
                 )}
-                <circle cx={x} cy={y} r={nodeR}
-                  fill={fill} stroke={stroke} strokeWidth={strokeW * 0.7} filter={filter} />
-                
-                <text 
-                  x={x} 
-                  y={y} 
-                  dy="0.35em"
-                  fontSize={fontSize} 
-                  fill="white"
-                  textAnchor="middle" 
-                  fontWeight="bold"
-                  style={{ userSelect: 'none', pointerEvents: 'none' }}
-                >
-                  {busNumber}
+                {(isLit || isAnimating) && !isBlackout && (
+                  <circle cx={x} cy={y} r={r * 1.4}
+                    fill={isAnimating ? '#4ade80' : '#22c55e'} 
+                    opacity={isAnimating ? 0.4 : 0.2}>
+                    {isAnimating && (
+                      <animate attributeName="opacity" values="0.4;0.1;0.4" dur="0.4s" repeatCount="indefinite" />
+                    )}
+                  </circle>
+                )}
+                <circle cx={x} cy={y} r={r}
+                  fill={fill} stroke={stroke} 
+                  strokeWidth={isAnimating ? strokeW * 2 : strokeW * 0.8} 
+                  filter={filter}
+                  style={pulseAnim ? { animation: 'nodeElectricPulse 0.4s ease-in-out infinite alternate' } : {}} />
+                <text x={x} y={y} dy="0.35em" fontSize={fontSize} fill="white"
+                  textAnchor="middle" fontWeight="bold"
+                  style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                  {i + 1}
                 </text>
-
                 {isBlackout && (
                   <g>
-                    <rect
-                      x={x - 0.04} 
-                      y={y - nodeR - 0.038}
-                      width={0.08} 
-                      height={0.024}
-                      rx={0.003}
-                      fill="rgba(220, 38, 38, 0.9)"
-                    />
-                    <text 
-                      x={x} 
-                      y={y - nodeR - 0.026}
-                      fontSize={fontSize * 0.50} 
-                      fill="#fff"
-                      textAnchor="middle" 
-                      dy="0.35em"
-                      fontWeight="bold"
-                    >
-                      OFF
-                    </text>
+                    <rect x={x - 0.04} y={y - nodeR - 0.038}
+                      width={0.08} height={0.024} rx={0.003} fill="rgba(220, 38, 38, 0.9)" />
+                    <text x={x} y={y - nodeR - 0.026} fontSize={fontSize * 0.50} fill="#fff"
+                      textAnchor="middle" dy="0.35em" fontWeight="bold">OFF</text>
                   </g>
+                )}
+                {isAnimating && (
+                  <>
+                    <circle cx={x} cy={y} r={r * 0.5} fill="#ffffff" opacity="0.9">
+                      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="0.3s" repeatCount="indefinite" />
+                    </circle>
+                    <circle cx={x} cy={y} r={r * 0.25} fill="#ffffff" />
+                  </>
                 )}
               </g>
             );
           })}
         </g>
       </svg>
-
       <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280', textAlign: 'center' }}>
         🖱️ Molette pour zoomer · Cliquer-glisser pour déplacer
       </div>
@@ -280,17 +466,23 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
 const ComparisonCharts = ({ comparison }) => {
   if (!comparison) return null;
   const methods = Object.entries(comparison.methods);
-  const times   = methods.map(([, d]) => d.time * 1000);
+  const times = methods.map(([, d]) => d.time * 1000);
   const maxTime = Math.max(...times, 0.01);
   const residuals = methods.map(([, d]) => d.residual);
-  const logMin    = -16;
-  const logMax    = 0;
+  const logMin = -16;
+  const logMax = 0;
   const logBar = (r) => {
     const l = Math.log10(Math.max(r, 1e-16));
     return Math.min(100, Math.max(2, ((logMax - l) / (logMax - logMin)) * 100));
   };
   const BAR_MAX_PX = 160;
-  const methodColors = { lu: '#00d2ff', gauss: '#00ff88', cholesky: '#ffaa00' };
+  
+  const methodColors = { 
+    gauss: '#ff6b6b',
+    lu: '#4ecdc4',
+    cholesky: '#ffe66d'
+  };
+  
   const getColor = (m) => methodColors[m] || '#888';
 
   return (
@@ -300,7 +492,8 @@ const ComparisonCharts = ({ comparison }) => {
         <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 40 }}>
           {methods.map(([method, data]) => {
             const heightPx = Math.max(4, (data.time * 1000 / maxTime) * BAR_MAX_PX);
-            const isBest   = comparison.recommendation.method === method;
+            const isBest = comparison.recommendation.method === method;
+            const color = getColor(method);
             return (
               <div key={method} className="bar-wrapper">
                 <span className="bar-value" style={{ fontSize: 11, marginBottom: 2 }}>
@@ -309,10 +502,10 @@ const ComparisonCharts = ({ comparison }) => {
                 <div style={{
                   width: 44, height: heightPx,
                   background: isBest
-                    ? 'linear-gradient(180deg, #00ff88 0%, #00aa55 100%)'
-                    : `linear-gradient(180deg, ${getColor(method)}cc 0%, ${getColor(method)}66 100%)`,
+                    ? `linear-gradient(180deg, ${color} 0%, ${color}dd 100%)`
+                    : `linear-gradient(180deg, ${color}aa 0%, ${color}66 100%)`,
                   borderRadius: '4px 4px 0 0',
-                  border: isBest ? '2px solid #00ff88' : `1px solid ${getColor(method)}`,
+                  border: isBest ? `2px solid ${color}` : `1px solid ${color}`,
                   position: 'relative',
                   transition: 'height 0.4s ease',
                 }}>
@@ -335,8 +528,9 @@ const ComparisonCharts = ({ comparison }) => {
         <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 40 }}>
           {methods.map(([method, data]) => {
             const heightPx = (logBar(data.residual) / 100) * BAR_MAX_PX;
-            const isBest   = comparison.recommendation.method === method;
-            const logVal   = Math.log10(Math.max(data.residual, 1e-16));
+            const isBest = comparison.recommendation.method === method;
+            const logVal = Math.log10(Math.max(data.residual, 1e-16));
+            const color = getColor(method);
             return (
               <div key={method} className="bar-wrapper">
                 <span className="bar-value" style={{ fontSize: 10, marginBottom: 2 }}>
@@ -345,10 +539,10 @@ const ComparisonCharts = ({ comparison }) => {
                 <div style={{
                   width: 44, height: Math.max(4, heightPx),
                   background: isBest
-                    ? 'linear-gradient(180deg, #00ff88 0%, #00aa55 100%)'
-                    : 'linear-gradient(180deg, #ffaa00cc 0%, #ffaa0066 100%)',
+                    ? `linear-gradient(180deg, ${color} 0%, ${color}dd 100%)`
+                    : `linear-gradient(180deg, ${color}aa 0%, ${color}66 100%)`,
                   borderRadius: '4px 4px 0 0',
-                  border: isBest ? '2px solid #00ff88' : '1px solid #ffaa00',
+                  border: isBest ? `2px solid ${color}` : `1px solid ${color}`,
                   transition: 'height 0.4s ease',
                 }} />
                 <span className="bar-label">{method.toUpperCase()}</span>
@@ -368,21 +562,24 @@ const ComparisonCharts = ({ comparison }) => {
 };
 
 const App = () => {
-  const [network,          setNetwork]          = useState(null);
-  const [modifiedA,        setModifiedA]        = useState(null);
-  const [selectedMethods,  setSelectedMethods]  = useState(['lu']);
-  const [scenario,         setScenario]         = useState('standard');
-  const [loading,          setLoading]          = useState(false);
-  const [results,          setResults]          = useState({});
-  const [comparison,       setComparison]       = useState(null);
-  const [brokenLines,      setBrokenLines]      = useState([]);
-  const [litNodes,         setLitNodes]         = useState(new Set());
-  const [blackoutNodes,    setBlackoutNodes]    = useState(new Set());
-  const [activeTab,        setActiveTab]        = useState('visualization');
-  const [tempBrokenLine,   setTempBrokenLine]   = useState({ from: '', to: '' });
+  const [network, setNetwork] = useState(null);
+  const [modifiedA, setModifiedA] = useState(null);
+  const [selectedMethods, setSelectedMethods] = useState(['lu']);
+  const [scenario, setScenario] = useState('standard');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState({});
+  const [comparison, setComparison] = useState(null);
+  const [brokenLines, setBrokenLines] = useState([]);
+  const [litNodes, setLitNodes] = useState(new Set());
+  const [blackoutNodes, setBlackoutNodes] = useState(new Set());
+  const [activeTab, setActiveTab] = useState('visualization');
+  const [tempBrokenLine, setTempBrokenLine] = useState({ from: '', to: '' });
   const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const [errorMessage,     setErrorMessage]     = useState('');
-  const [blackoutSummary,  setBlackoutSummary]  = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [blackoutSummary, setBlackoutSummary] = useState(null);
+  const [animatingNodes, setAnimatingNodes] = useState(new Set());
+  const [activeLines, setActiveLines] = useState(new Set());
+  const [currentLine, setCurrentLine] = useState(null);
 
   useEffect(() => {
     checkConnection();
@@ -435,7 +632,7 @@ const App = () => {
     try {
       setLoading(true);
       setErrorMessage('');
-      const res  = await fetch(`${API_URL}/api/ieee/${size}`);
+      const res = await fetch(`${API_URL}/api/ieee/${size}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.A) data.A = data.A.map(row => row.map(v => Number(v) || 0));
@@ -443,9 +640,14 @@ const App = () => {
       if (!data.coords?.length) data.coords = generateCoords(data.n);
       setNetwork(data);
       setModifiedA(null);
-      setResults({}); setComparison(null);
-      setLitNodes(new Set()); setBlackoutNodes(new Set());
-      setBrokenLines([]); setBlackoutSummary(null);
+      setResults({});
+      setComparison(null);
+      setLitNodes(new Set());
+      setBlackoutNodes(new Set());
+      setBrokenLines([]);
+      setBlackoutSummary(null);
+      setActiveLines(new Set());
+      setCurrentLine(null);
       setActiveTab('visualization');
     } catch (e) {
       setErrorMessage(`Erreur: ${e.message}`);
@@ -470,16 +672,28 @@ const App = () => {
         };
         setNetwork(newNetwork);
         setModifiedA(null);
-        setBrokenLines([]); setResults({}); setBlackoutSummary(null);
+        setBrokenLines([]);
+        setResults({});
+        setBlackoutSummary(null);
+        setActiveLines(new Set());
+        setCurrentLine(null);
       } catch { alert('Format JSON invalide'); }
     };
     reader.readAsText(file);
   };
 
-  const toggleMethod = (method) =>
-    setSelectedMethods(prev =>
-      prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method]
-    );
+  const toggleMethod = (method) => {
+    setSelectedMethods(prev => {
+      const newMethods = prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method];
+      if (newMethods.length < 2) {
+        setComparison(null);
+        if (activeTab === 'comparison') {
+          setActiveTab('results');
+        }
+      }
+      return newMethods;
+    });
+  };
 
   const addBrokenLine = () => {
     const from = parseInt(tempBrokenLine.from) - 1;
@@ -500,26 +714,100 @@ const App = () => {
     setBrokenLines(newBrokenLines);
     setModifiedA(calculateModifiedMatrix(network.A, newBrokenLines));
     setTempBrokenLine({ from: '', to: '' });
-    setResults({}); setLitNodes(new Set()); setBlackoutNodes(new Set()); setBlackoutSummary(null);
+    
+    const slackBus = network.slack_bus ?? 0;
+    const { connected, blackout } = findIslandsAfterBreaks(network, slackBus, newBrokenLines);
+    
+    setLitNodes(new Set());
+    setBlackoutNodes(new Set(blackout));
+    if (blackout.length > 0) {
+      setBlackoutSummary({ count: blackout.length, nodes: blackout });
+    } else {
+      setBlackoutSummary(null);
+    }
+    setResults({});
+    setActiveLines(new Set());
+    setCurrentLine(null);
   };
 
   const removeBrokenLine = (index) => {
     const newBrokenLines = brokenLines.filter((_, i) => i !== index);
     setBrokenLines(newBrokenLines);
     setModifiedA(calculateModifiedMatrix(network.A, newBrokenLines));
-    setResults({}); setLitNodes(new Set()); setBlackoutNodes(new Set()); setBlackoutSummary(null);
+    
+    const slackBus = network.slack_bus ?? 0;
+    const { connected, blackout } = findIslandsAfterBreaks(network, slackBus, newBrokenLines);
+    
+    setLitNodes(new Set());
+    setBlackoutNodes(new Set(blackout));
+    if (blackout.length > 0) {
+      setBlackoutSummary({ count: blackout.length, nodes: blackout });
+    } else {
+      setBlackoutSummary(null);
+    }
+    setResults({});
+    setActiveLines(new Set());
+    setCurrentLine(null);
   };
 
   const resetMatrix = () => {
     setBrokenLines([]);
     setModifiedA(null);
-    setResults({}); setLitNodes(new Set()); setBlackoutNodes(new Set()); setBlackoutSummary(null);
+    setResults({});
+    setLitNodes(new Set());
+    setBlackoutNodes(new Set());
+    setBlackoutSummary(null);
+    setActiveLines(new Set());
+    setCurrentLine(null);
+  };
+
+  const animateRealisticPropagation = async (propagationOrder, slackBus) => {
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    
+    setLitNodes(new Set([slackBus]));
+    setAnimatingNodes(new Set());
+    setActiveLines(new Set());
+    setCurrentLine(null);
+    
+    await delay(400);
+    
+    for (let i = 1; i < propagationOrder.length; i++) {
+      const { node, parent, depth, lineKey } = propagationOrder[i];
+      
+      setCurrentLine(lineKey);
+      setActiveLines(prev => new Set([...prev, lineKey]));
+      
+      await delay(350);
+      
+      setAnimatingNodes(prev => new Set([...prev, node]));
+      
+      await delay(250);
+      
+      setAnimatingNodes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(node);
+        return newSet;
+      });
+      
+      setLitNodes(prev => new Set([...prev, node]));
+      setCurrentLine(null);
+      
+      await delay(150);
+    }
+    
+    await delay(800);
+    setActiveLines(new Set());
+    setCurrentLine(null);
   };
 
   const solve = async () => {
     if (!network || selectedMethods.length === 0) return;
     setLoading(true);
-    setLitNodes(new Set()); setBlackoutNodes(new Set()); setBlackoutSummary(null);
+    setLitNodes(new Set());
+    setBlackoutNodes(new Set());
+    setBlackoutSummary(null);
+    setActiveLines(new Set());
+    setCurrentLine(null);
 
     const newResults = {};
     let lastLit = [], lastBlackout = [];
@@ -533,8 +821,8 @@ const App = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             A: matrixToSolve,
-            b: network.b, 
-            method, 
+            b: network.b,
+            method,
             scenario,
             broken_lines: [],
             slack_bus: network.slack_bus ?? 0,
@@ -543,15 +831,21 @@ const App = () => {
         const data = await res.json();
         newResults[method] = data;
         if (!data.error) {
-          lastLit      = data.lit_nodes      ?? [];
+          lastLit = data.lit_nodes ?? [];
           lastBlackout = data.blackout_nodes ?? [];
         }
       }
 
+      const slackBus = network.slack_bus ?? 0;
+      const propagationOrder = getRealisticPropagationOrder(network, slackBus, brokenLines);
+      
+      await animateRealisticPropagation(propagationOrder, slackBus);
+      
       setResults(newResults);
-      setLitNodes(new Set(lastLit));
       setBlackoutNodes(new Set(lastBlackout));
-      if (lastBlackout.length > 0) setBlackoutSummary({ count: lastBlackout.length, nodes: lastBlackout });
+      if (lastBlackout.length > 0) {
+        setBlackoutSummary({ count: lastBlackout.length, nodes: lastBlackout });
+      }
 
       if (selectedMethods.length >= 2 &&
           Object.values(newResults).filter(r => !r.error).length >= 2) {
@@ -589,7 +883,7 @@ const App = () => {
 
   const renderConnectionStatus = () => {
     if (connectionStatus === 'connecting') return <span className="status-connecting">🟡 Connexion...</span>;
-    if (connectionStatus === 'connected')  return <span className="status-connected">🟢 Connecté</span>;
+    if (connectionStatus === 'connected') return <span className="status-connected">🟢 Connecté</span>;
     return <span className="status-error" onClick={checkConnection}>🔴 Déconnecté (cliquer pour réessayer)</span>;
   };
 
@@ -685,8 +979,8 @@ const App = () => {
               <div className="subsection">
                 <label>Standards IEEE</label>
                 <div className="button-group grid-3">
-                  <button onClick={() => loadIEEE(14)}  className="btn ieee">IEEE 14</button>
-                  <button onClick={() => loadIEEE(30)}  className="btn ieee">IEEE 30</button>
+                  <button onClick={() => loadIEEE(14)} className="btn ieee">IEEE 14</button>
+                  <button onClick={() => loadIEEE(30)} className="btn ieee">IEEE 30</button>
                   <button onClick={() => loadIEEE(118)} className="btn ieee">IEEE 118</button>
                 </div>
               </div>
@@ -737,8 +1031,8 @@ const App = () => {
             <div className="subsection">
               <label>Standards IEEE</label>
               <div className="button-group grid-3">
-                <button onClick={() => loadIEEE(14)}  className="btn ieee">IEEE 14</button>
-                <button onClick={() => loadIEEE(30)}  className="btn ieee">IEEE 30</button>
+                <button onClick={() => loadIEEE(14)} className="btn ieee">IEEE 14</button>
+                <button onClick={() => loadIEEE(30)} className="btn ieee">IEEE 30</button>
                 <button onClick={() => loadIEEE(118)} className="btn ieee">IEEE 118</button>
               </div>
             </div>
@@ -757,8 +1051,8 @@ const App = () => {
               <label>Méthodes de résolution</label>
               <div className="methods-checkbox">
                 {[
-                  { id: 'lu',       label: 'Factorisation LU (Stable)' },
-                  { id: 'gauss',    label: 'Élimination Gauss' },
+                  { id: 'lu', label: 'Factorisation LU (Stable)' },
+                  { id: 'gauss', label: 'Élimination Gauss' },
                   { id: 'cholesky', label: 'Cholesky (SDP)' },
                 ].map(m => (
                   <label key={m.id}
@@ -775,8 +1069,8 @@ const App = () => {
               <div className="scenario-buttons">
                 {[
                   { id: 'standard', label: '☀️ Standard' },
-                  { id: 'matin',    label: '🌅 Matin +30%' },
-                  { id: 'soir',     label: '🌆 Soir -20%' },
+                  { id: 'matin', label: '🌅 Matin +30%' },
+                  { id: 'soir', label: '🌆 Soir -20%' },
                 ].map(s => (
                   <button key={s.id}
                     className={`scenario-btn ${scenario === s.id ? 'active' : ''}`}
@@ -788,7 +1082,6 @@ const App = () => {
               disabled={loading || selectedMethods.length === 0}>
               {loading ? '⏳ Calcul...' : '🚀 Lancer résolution'}
             </button>
-            {/* SUPPRESSION DU BOUTON COMPARER MÉTHODES */}
           </div>
 
           <div className="section danger-zone">
@@ -813,10 +1106,10 @@ const App = () => {
               ))}
             </div>
             <div className="add-fault-form">
-              <input type="number" placeholder="Départ (1-{network.n})"
+              <input type="number" placeholder={`Départ (1-${network.n})`}
                 value={tempBrokenLine.from}
                 onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, from: e.target.value })} />
-              <input type="number" placeholder="Arrivée (1-{network.n})"
+              <input type="number" placeholder={`Arrivée (1-${network.n})`}
                 value={tempBrokenLine.to}
                 onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, to: e.target.value })} />
               <button onClick={addBrokenLine} className="btn add-fault-btn">+ Couper</button>
@@ -845,7 +1138,7 @@ const App = () => {
             <button className={`tab ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')}>
               📊 Résultats {Object.keys(results).length > 0 && `(${Object.keys(results).length})`}
             </button>
-            {comparison && (
+            {comparison && selectedMethods.length >= 2 && (
               <button className={`tab ${activeTab==='comparison'?'active':''}`} onClick={() => setActiveTab('comparison')}>⚖️ Comparaison</button>
             )}
           </div>
@@ -876,18 +1169,17 @@ const App = () => {
                     litNodes={litNodes}
                     blackoutNodes={blackoutNodes}
                     brokenLines={brokenLines}
-                    results={results}
-                    selectedMethods={selectedMethods}
+                    animatingNodes={animatingNodes}
+                    activeLines={activeLines}
+                    currentLine={currentLine}
                   />
                 </div>
-                {/* LÉGENDE */}
                 <div className="legend">
                   <div className="legend-item">
                     <span className="dot lit"></span>
                     <span>Alimenté</span>
                   </div>
                   <div className="legend-item">
-                    {/* Point jaune avec style inline pour le Bus Slack */}
                     <span style={{
                       display: 'inline-block',
                       width: 14,
@@ -930,114 +1222,143 @@ const App = () => {
                   <div className="empty-state"><p>Lancez la résolution pour voir les résultats</p></div>
                 ) : (
                   <div className="results-grid">
-                    {Object.entries(results).map(([method, data]) => (
-                      <div key={method} className={`result-card ${data.error ? 'error' : ''}`}>
-                        <div className="result-header">
-                          <h3>{method.toUpperCase()}</h3>
-                          {data.error ? <span className="badge error">Erreur</span> : <span className="badge success">OK</span>}
+                    {Object.entries(results).map(([method, data]) => {
+                      const perf = PERFORMANCE_DESC[method] || { label: 'Inconnu', detail: '', color: '#888' };
+                      return (
+                        <div key={method} className={`result-card ${data.error ? 'error' : ''}`}>
+                          <div className="result-header">
+                            <h3>{method.toUpperCase()}</h3>
+                            {data.error ? <span className="badge error">Erreur</span> : <span className="badge success">OK</span>}
+                          </div>
+                          {!data.error && (
+                            <>
+                              {data.isolated_islands && (
+                                <div style={{
+                                  background:'rgba(220,38,38,0.12)', border:'1px solid #ef4444',
+                                  borderRadius:4, padding:'6px 8px', marginBottom:8, fontSize:11, color:'#fca5a5'
+                                }}>
+                                  ⚠️ Îlot détecté — {data.blackout_nodes?.length} nœud(s) hors tension : {data.blackout_nodes?.map(n => n + 1).join(', ')}
+                                </div>
+                              )}
+                              <div className="result-metrics">
+                                <div className="metric">
+                                  <label>⏱️ Temps d'exécution</label>
+                                  <value>{(data.time * 1000).toFixed(3)} ms</value>
+                                </div>
+                                <div className="metric">
+                                  <label>⚡ Performance</label>
+                                  <value style={{ color: perf.color, fontSize: '14px', fontWeight: 'bold' }}>
+                                    {perf.label}
+                                  </value>
+                                </div>
+                                <div className="metric">
+                                  <label>🎯 Précision</label>
+                                  <value>{data.residual?.toExponential(2)}</value>
+                                </div>
+                              </div>
+                              <div className="solution-section">
+                                <h4>Solution — Angles de phase θ (rad)</h4>
+                                <div className="solution-grid">
+                                  {data.solution?.map((val, i) => (
+                                    <div key={i} className="solution-item"
+                                      style={data.blackout_nodes?.includes(i) ? { opacity: 0.35 } : {}}>
+                                      <span className="theta-label">θ<sub>{i+1}</sub></span>
+                                      <span className="theta-value">
+                                        {val === null || val === undefined
+                                          ? '— hors tension'
+                                          : `${val.toFixed(6)} rad`}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          {data.error && <div className="error-message">⚠️ {data.error}</div>}
                         </div>
-                        {!data.error && (
-                          <>
-                            {data.isolated_islands && (
-                              <div style={{
-                                background:'rgba(220,38,38,0.12)', border:'1px solid #ef4444',
-                                borderRadius:4, padding:'6px 8px', marginBottom:8, fontSize:11, color:'#fca5a5'
-                              }}>
-                                ⚠️ Îlot détecté — {data.blackout_nodes?.length} nœud(s) hors tension : {data.blackout_nodes?.map(n => n + 1).join(', ')}
-                              </div>
-                            )}
-                            <div className="result-metrics">
-                              <div className="metric"><label>⏱️ Temps</label><value>{(data.time * 1000).toFixed(2)} ms</value></div>
-                              <div className="metric"><label>🔄 Itérations</label><value>{data.iterations}</value></div>
-                              <div className="metric"><label>📐 Résidu ‖Ax-b‖</label><value>{data.residual?.toExponential(2)}</value></div>
-                              <div className="metric"><label>🔢 Conditionnement κ</label><value>{data.condition_number?.toExponential(2) || 'N/A'}</value></div>
-                            </div>
-                            <div className="solution-section">
-                              <h4>Solution — Angles de phase θ (rad)</h4>
-                              <div className="solution-grid">
-                                {data.solution?.map((val, i) => (
-                                  <div key={i} className="solution-item"
-                                    style={data.blackout_nodes?.includes(i) ? { opacity: 0.35 } : {}}>
-                                    <span className="theta-label">θ<sub>{i+1}</sub></span>
-                                    <span className="theta-value">
-                                      {val === null || val === undefined
-                                        ? '— hors tension'
-                                        : `${val.toFixed(6)} rad`}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </>
-                        )}
-                        {data.error && <div className="error-message">⚠️ {data.error}</div>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
             )}
 
-            {activeTab === 'comparison' && comparison && (
+            {activeTab === 'comparison' && comparison && selectedMethods.length >= 2 && (
               <div className="comparison-panel">
                 <h2>📊 Analyse comparative</h2>
 
                 <ComparisonCharts comparison={comparison} />
 
-                <div className="recommendation-box">
-                  <div className="recommendation-header">
-                    <span className="trophy">🏆</span>
-                    <h3>Recommandation : {comparison.recommendation.method.toUpperCase()}</h3>
-                  </div>
-                  <p>{comparison.recommendation.reason}</p>
-                </div>
-
-                <table style={{
-                  width: '100%', borderCollapse: 'collapse', fontSize: 13,
-                  marginTop: 16, background: 'rgba(0,0,0,0.3)', borderRadius: 8,
+                <h3 style={{ marginTop: 24, marginBottom: 16, color: '#00d2ff', fontSize: '16px' }}>
+                  Recommandations par méthode
+                </h3>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  gap: '16px',
+                  marginTop: 16
                 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #444' }}>
-                      {['Méthode', 'Temps (ms)', 'Résidu', 'Itérations'].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#00d2ff', fontWeight: 500 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(comparison.methods).map(([method, data]) => (
-                      <tr key={method}
-                        style={{
-                          background: comparison.recommendation.method === method
-                            ? 'rgba(0,255,136,0.08)' : 'transparent',
-                          borderBottom: '1px solid #333',
+                  {Object.entries(comparison.methods)
+                    .sort(([,a], [,b]) => a.time - b.time)
+                    .map(([method, data]) => {
+                    const perf = PERFORMANCE_DESC[method] || { label: 'Inconnu', color: '#888', recommendation: '' };
+                    const isBest = comparison.recommendation.method === method;
+                    return (
+                      <div key={method} style={{
+                        background: isBest ? `${perf.color}15` : 'rgba(30,41,59,0.6)',
+                        border: `1px solid ${isBest ? perf.color : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: '12px',
+                        padding: '16px',
+                        position: 'relative'
+                      }}>
+                        {isBest && (
+                          <span style={{
+                            position: 'absolute',
+                            top: -10,
+                            right: 10,
+                            background: perf.color,
+                            color: '#0f172a',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '10px',
+                            fontWeight: 'bold'
+                          }}>
+                            RECOMMANDÉ
+                          </span>
+                        )}
+                        <div style={{ 
+                          fontSize: '16px', 
+                          fontWeight: 'bold', 
+                          color: perf.color,
+                          marginBottom: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
                         }}>
-                        <td style={{ padding: '7px 12px', fontWeight: comparison.recommendation.method === method ? 600 : 400 }}>
-                          {comparison.recommendation.method === method && '🏆 '}{method.toUpperCase()}
-                        </td>
-                        <td style={{ padding: '7px 12px', color: '#00ff88' }}>{(data.time * 1000).toFixed(3)}</td>
-                        <td style={{ padding: '7px 12px', fontFamily: 'monospace' }}>{data.residual.toExponential(3)}</td>
-                        <td style={{ padding: '7px 12px' }}>{data.iterations}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="methods-details" style={{ marginTop: 20 }}>
-                  <div className="method-card">
-                    <h4>Gauss</h4>
-                    <p>Élimination directe avec pivot partiel. Complexité O(n³). Efficace pour petits systèmes.</p>
-                    <span className="tag stable">✓ Stable</span>
-                  </div>
-                  <div className="method-card recommended">
-                    <h4>LU</h4>
-                    <p>Factorisation P·A = L·U avec pivot. Réutilise la factorisation pour plusieurs seconds membres.</p>
-                    <span className="tag optimal">✓ Optimal</span>
-                  </div>
-                  <div className="method-card">
-                    <h4>Cholesky</h4>
-                    <p>2× plus rapide si matrice SDP. Nécessite symétrie définie positive stricte.</p>
-                    <span className="tag fast">✓ Rapide</span>
-                  </div>
+                          {method.toUpperCase()}
+                          <span style={{ 
+                            fontSize: '10px', 
+                            background: `${perf.color}20`,
+                            color: perf.color,
+                            padding: '2px 6px',
+                            borderRadius: '4px'
+                          }}>
+                            {perf.label}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+                          {(data.time * 1000).toFixed(3)} ms · Résidu {data.residual.toExponential(2)}
+                        </div>
+                        <div style={{ 
+                          fontSize: '13px', 
+                          color: '#e2e8f0',
+                          lineHeight: '1.5'
+                        }}>
+                          {perf.recommendation}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
