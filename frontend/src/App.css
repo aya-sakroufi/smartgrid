@@ -1304,4 +1304,31 @@ body {
   0% { transform: scale(1); filter: brightness(1); }
   100% { transform: scale(1.2); filter: brightness(1.4); }
 }
+.app-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+/* Mode Jour - Gradient vert/turquoise */
+.app-title-jour {
+  background: linear-gradient(135deg, #00ff88, #00d2ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Mode Nuit - Gradient violet/mauve */
+.app-title-nuit {
+  background: linear-gradient(135deg, #7b68ee, #9d4edd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 }

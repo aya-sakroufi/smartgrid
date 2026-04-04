@@ -18,10 +18,36 @@ const PERFORMANCE_DESC = {
     recommendation: 'Choix standard pour systèmes de taille moyenne à grande'
   },
   cholesky: { 
-    label: 'Ultra-rapide', 
+    label: 'Spécialisé', 
     detail: '2× plus vite (si SDP)',
     color: '#ffe66d',
     recommendation: 'Idéal pour matrices symétriques définies positives'
+  }
+};
+
+// Thèmes selon le mode Jour/Nuit
+const THEMES = {
+  jour: {
+    background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
+    cardBg: 'rgba(30, 41, 59, 0.4)',
+    textColor: '#e2e8f0',
+    accentColor: '#00d2ff',
+    headerGradient: 'linear-gradient(135deg, #00ff88, #00d2ff)',
+    networkBg: 'radial-gradient(circle at 30% 20%, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 1) 100%)',
+    sunIcon: '☀️',
+    modeLabel: 'Mode Jour',
+    titleGradient: 'linear-gradient(135deg, #00ff88, #00d2ff)'
+  },
+  nuit: {
+    background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%)',
+    cardBg: 'rgba(20, 20, 35, 0.6)',
+    textColor: '#c7c7c7',
+    accentColor: '#7b68ee',
+    headerGradient: 'linear-gradient(135deg, #7b68ee, #9d4edd)',
+    networkBg: 'radial-gradient(circle at 30% 20%, rgba(25, 25, 40, 0.9) 0%, rgba(10, 10, 20, 1) 100%)',
+    moonIcon: '🌙',
+    modeLabel: 'Mode Nuit',
+    titleGradient: 'linear-gradient(135deg, #7b68ee, #9d4edd)'
   }
 };
 
@@ -31,6 +57,8 @@ const IEEE14_COORDS = [
   [0.50, 0.16], [0.67, 0.16], [0.18, 0.16], [0.35, 0.08],
   [0.50, 0.08], [0.67, 0.08],
 ];
+
+// ... (garder toutes les fonctions utilitaires identiques jusqu'au composant App)
 
 // ============================================================
 // FONCTIONS DE PROPAGATION RÉALISTE SELON LE CÂBLAGE
@@ -117,7 +145,7 @@ const findIslandsAfterBreaks = (network, slackBus, brokenLines) => {
 // COMPOSANT NetworkSVG
 // ============================================================
 
-const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, animatingNodes, activeLines, currentLine }) => {
+const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, animatingNodes, activeLines, currentLine, theme }) => {
   const svgRef = useRef(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -214,6 +242,10 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
   const strokeW = network.n <= 30 ? 0.008 : 0.005;
   const hasResults = litNodes.size > 0 || animatingNodes.size > 0;
 
+  const isNight = theme === 'nuit';
+  const lineActiveColor = isNight ? '#9d4edd' : '#22c55e';
+  const lineGlowColor = isNight ? '#7b68ee' : '#86efac';
+
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -223,8 +255,10 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
           { label: '↺', fn: resetZoom, title: 'Réinitialiser', small: true },
         ].map(({ label, fn, title, small }) => (
           <button key={label} onClick={fn} title={title} style={{
-            width: 28, height: 28, background: 'rgba(0,0,0,0.7)', border: '1px solid #444',
-            borderRadius: 4, color: '#fff', fontSize: small ? 11 : 16, cursor: 'pointer',
+            width: 28, height: 28, background: isNight ? 'rgba(20,20,35,0.9)' : 'rgba(0,0,0,0.7)', 
+            border: isNight ? '1px solid #7b68ee' : '1px solid #444',
+            borderRadius: 4, color: isNight ? '#9d4edd' : '#fff', 
+            fontSize: small ? 11 : 16, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{label}</button>
         ))}
@@ -233,7 +267,9 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
       {transform.scale !== 1 && (
         <div style={{
           position: 'absolute', bottom: 28, right: 8, zIndex: 10,
-          background: 'rgba(0,0,0,0.6)', color: '#00d2ff', fontSize: 11,
+          background: isNight ? 'rgba(20,20,35,0.8)' : 'rgba(0,0,0,0.6)', 
+          color: isNight ? '#9d4edd' : '#00d2ff', 
+          fontSize: 11,
           padding: '2px 7px', borderRadius: 4,
         }}>×{transform.scale.toFixed(1)}</div>
       )}
@@ -253,12 +289,12 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
       >
         <defs>
           <radialGradient id="nodeGradient" cx="30%" cy="30%">
-            <stop offset="0%" stopColor="#4ade80" />
-            <stop offset="100%" stopColor="#16a34a" />
+            <stop offset="0%" stopColor={isNight ? '#9d4edd' : '#4ade80'} />
+            <stop offset="100%" stopColor={isNight ? '#7b68ee' : '#16a34a'} />
           </radialGradient>
           <radialGradient id="nodeGradientAnimating" cx="30%" cy="30%">
-            <stop offset="0%" stopColor="#86efac" />
-            <stop offset="100%" stopColor="#22c55e" />
+            <stop offset="0%" stopColor={isNight ? '#b794f6' : '#86efac'} />
+            <stop offset="100%" stopColor={isNight ? '#9d4edd' : '#22c55e'} />
           </radialGradient>
           <radialGradient id="blackoutGradient" cx="30%" cy="30%">
             <stop offset="0%" stopColor="#f87171" />
@@ -285,9 +321,9 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
             <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
           <linearGradient id="lineFlowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
-            <stop offset="50%" stopColor="#86efac" stopOpacity="1" />
-            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.2" />
+            <stop offset="0%" stopColor={isNight ? '#7b68ee' : '#22c55e'} stopOpacity="0.2" />
+            <stop offset="50%" stopColor={isNight ? '#b794f6' : '#86efac'} stopOpacity="1" />
+            <stop offset="100%" stopColor={isNight ? '#7b68ee' : '#22c55e'} stopOpacity="0.2" />
           </linearGradient>
         </defs>
 
@@ -306,7 +342,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
               const bothNodesLit = litNodes.has(i) && litNodes.has(j);
               const oneNodeAnimating = animatingNodes.has(i) || animatingNodes.has(j);
               
-              let lineColor = '#374151';
+              let lineColor = isNight ? '#2d2d44' : '#374151';
               let lineWidth = strokeW;
               let lineOpacity = 0.6;
               let filter = '';
@@ -317,33 +353,33 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
                 lineWidth = strokeW * 0.8;
                 lineOpacity = 0.9;
               } else if (isCurrentLine) {
-                lineColor = '#86efac';
+                lineColor = lineGlowColor;
                 lineWidth = strokeW * 3;
                 lineOpacity = 1;
                 filter = 'url(#glowCurrent)';
                 glowEffect = true;
               } else if (isActive) {
-                lineColor = '#22c55e';
+                lineColor = lineActiveColor;
                 lineWidth = strokeW * 2;
                 lineOpacity = 0.9;
                 filter = 'url(#glowLine)';
               } else if (bothNodesLit) {
-                lineColor = '#22c55e';
+                lineColor = lineActiveColor;
                 lineWidth = strokeW * 1.2;
                 lineOpacity = 0.7;
               } else if (oneNodeAnimating) {
-                lineColor = '#4ade80';
+                lineColor = isNight ? '#b794f6' : '#4ade80';
                 lineWidth = strokeW * 1.5;
                 lineOpacity = 0.5;
               } else if (blackoutNodes.has(i) || blackoutNodes.has(j)) {
-                lineColor = '#1f2937';
+                lineColor = isNight ? '#1a1a2e' : '#1f2937';
                 lineOpacity = 0.2;
               }
               
               return (
                 <g key={`line-${i}-${j}`}>
                   <line x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke="#1f2937" strokeWidth={strokeW} opacity={0.4} />
+                    stroke={isNight ? '#2d2d44' : '#1f2937'} strokeWidth={strokeW} opacity={0.4} />
                   <line x1={x1} y1={y1} x2={x2} y2={y2}
                     stroke={lineColor} strokeWidth={lineWidth}
                     strokeDasharray={broken ? '0.025,0.015' : 'none'}
@@ -379,8 +415,8 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
             const isAnimating = animatingNodes.has(i);
             const isSlack = i === (network.slack_bus ?? 0);
             
-            let fill = '#1f2937';
-            let stroke = '#4b5563';
+            let fill = isNight ? '#2d2d44' : '#1f2937';
+            let stroke = isNight ? '#3d3d5c' : '#4b5563';
             let filter = '';
             let r = nodeR;
             let pulseAnim = false;
@@ -391,12 +427,12 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
               filter = 'url(#glowRed)'; 
             } else if (isLit)  { 
               fill = isSlack ? '#facc15' : 'url(#nodeGradient)'; 
-              stroke = isSlack ? '#ca8a04' : '#4ade80'; 
+              stroke = isSlack ? '#ca8a04' : (isNight ? '#9d4edd' : '#4ade80'); 
               filter = 'url(#glowGreen)'; 
               r = nodeR * 1.15;
             } else if (isAnimating) {
               fill = 'url(#nodeGradientAnimating)';
-              stroke = '#4ade80';
+              stroke = isNight ? '#b794f6' : '#4ade80';
               filter = 'url(#glowAnimating)';
               r = nodeR * 1.4;
               pulseAnim = true;
@@ -406,7 +442,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
               <g key={`node-${i}`}>
                 {(isLit || isAnimating) && !isBlackout && (
                   <circle cx={x} cy={y} r={r * 2}
-                    fill={isAnimating ? '#22c55e' : '#4ade80'} 
+                    fill={isAnimating ? (isNight ? '#9d4edd' : '#22c55e') : (isNight ? '#9d4edd' : '#4ade80')} 
                     opacity={isAnimating ? 0.3 : 0.15}>
                     {isAnimating && (
                       <>
@@ -418,7 +454,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
                 )}
                 {(isLit || isAnimating) && !isBlackout && (
                   <circle cx={x} cy={y} r={r * 1.4}
-                    fill={isAnimating ? '#4ade80' : '#22c55e'} 
+                    fill={isAnimating ? (isNight ? '#b794f6' : '#4ade80') : (isNight ? '#7b68ee' : '#22c55e')} 
                     opacity={isAnimating ? 0.4 : 0.2}>
                     {isAnimating && (
                       <animate attributeName="opacity" values="0.4;0.1;0.4" dur="0.4s" repeatCount="indefinite" />
@@ -456,7 +492,7 @@ const NetworkSVG = ({ network, modifiedA, litNodes, blackoutNodes, brokenLines, 
           })}
         </g>
       </svg>
-      <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280', textAlign: 'center' }}>
+      <div style={{ marginTop: 6, fontSize: 11, color: isNight ? '#7b68ee' : '#6b7280', textAlign: 'center' }}>
         🖱️ Molette pour zoomer · Cliquer-glisser pour déplacer
       </div>
     </div>
@@ -486,19 +522,16 @@ const ComparisonCharts = ({ comparison }) => {
   const getColor = (m) => methodColors[m] || '#888';
 
   return (
-    <div className="charts-container">
-      <div className="chart">
-        <h4>Temps d'exécution (ms)</h4>
-        <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 40 }}>
+    <div className="charts-container" style={{ marginTop: '40px', marginBottom: '40px' }}>
+      <div className="chart" style={{ padding: '30px 20px' }}>
+        <h4 style={{ marginBottom: '30px', marginTop: '10px' }}>Temps d'exécution (ms)</h4>
+        <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 80, paddingBottom: '20px' }}>
           {methods.map(([method, data]) => {
             const heightPx = Math.max(4, (data.time * 1000 / maxTime) * BAR_MAX_PX);
             const isBest = comparison.recommendation.method === method;
             const color = getColor(method);
             return (
-              <div key={method} className="bar-wrapper">
-                <span className="bar-value" style={{ fontSize: 11, marginBottom: 2 }}>
-                  {(data.time * 1000).toFixed(2)}
-                </span>
+              <div key={method} className="bar-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                 <div style={{
                   width: 44, height: heightPx,
                   background: isBest
@@ -508,34 +541,37 @@ const ComparisonCharts = ({ comparison }) => {
                   border: isBest ? `2px solid ${color}` : `1px solid ${color}`,
                   position: 'relative',
                   transition: 'height 0.4s ease',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center'
                 }}>
                   {isBest && (
                     <span style={{
-                      position: 'absolute', top: -18, left: '50%',
-                      transform: 'translateX(-50%)', fontSize: 13,
+                      position: 'absolute', top: -28, left: '50%',
+                      transform: 'translateX(-50%)', fontSize: 20,
                     }}>🏆</span>
                   )}
                 </div>
-                <span className="bar-label">{method.toUpperCase()}</span>
+                <span className="bar-label" style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', marginTop: '4px' }}>{method.toUpperCase()}</span>
+                <span className="bar-value" style={{ fontSize: 12, color: '#ffffff', fontWeight: 600, fontFamily: 'monospace', background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 4, marginTop: '2px' }}>
+                  {(data.time * 1000).toFixed(2)} ms
+                </span>
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className="chart">
-        <h4>Précision (résidu ‖Ax-b‖)</h4>
-        <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 40 }}>
+      <div className="chart" style={{ padding: '30px 20px' }}>
+        <h4 style={{ marginBottom: '30px', marginTop: '10px' }}>Précision (résidu ‖Ax-b‖)</h4>
+        <div className="bar-chart" style={{ alignItems: 'flex-end', height: BAR_MAX_PX + 80, paddingBottom: '20px' }}>
           {methods.map(([method, data]) => {
             const heightPx = (logBar(data.residual) / 100) * BAR_MAX_PX;
             const isBest = comparison.recommendation.method === method;
             const logVal = Math.log10(Math.max(data.residual, 1e-16));
             const color = getColor(method);
             return (
-              <div key={method} className="bar-wrapper">
-                <span className="bar-value" style={{ fontSize: 10, marginBottom: 2 }}>
-                  {data.residual.toExponential(1)}
-                </span>
+              <div key={method} className="bar-wrapper" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                 <div style={{
                   width: 44, height: Math.max(4, heightPx),
                   background: isBest
@@ -544,16 +580,22 @@ const ComparisonCharts = ({ comparison }) => {
                   borderRadius: '4px 4px 0 0',
                   border: isBest ? `2px solid ${color}` : `1px solid ${color}`,
                   transition: 'height 0.4s ease',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center'
                 }} />
-                <span className="bar-label">{method.toUpperCase()}</span>
-                <span style={{ fontSize: 9, color: '#6b7280', marginTop: 1 }}>
-                  10<sup>{logVal.toFixed(0)}</sup>
+                <span className="bar-label" style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', textTransform: 'uppercase', marginTop: '4px' }}>{method.toUpperCase()}</span>
+                <span className="bar-value" style={{ fontSize: 11, color: '#ffffff', fontWeight: 600, fontFamily: 'monospace', background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 4, marginTop: '2px' }}>
+                  {data.residual.toExponential(1)}
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8', marginTop: '2px' }}>
+                  10<sup style={{ color: '#e2e8f0' }}>{logVal.toFixed(0)}</sup>
                 </span>
               </div>
             );
           })}
         </div>
-        <p style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', marginTop: 4 }}>
+        <p style={{ fontSize: 11, color: '#6b7280', textAlign: 'center', marginTop: '15px' }}>
           Barre haute = meilleure précision
         </p>
       </div>
@@ -580,12 +622,48 @@ const App = () => {
   const [animatingNodes, setAnimatingNodes] = useState(new Set());
   const [activeLines, setActiveLines] = useState(new Set());
   const [currentLine, setCurrentLine] = useState(null);
+  const [originalB, setOriginalB] = useState(null);
+
+  // Déterminer le thème selon le scénario
+  const currentTheme = scenario === 'soir' ? THEMES.nuit : THEMES.jour;
+  const themeMode = scenario === 'soir' ? 'nuit' : 'jour';
 
   useEffect(() => {
     checkConnection();
     const interval = setInterval(checkConnection, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Sauvegarder b original quand le réseau est chargé
+  useEffect(() => {
+    if (network && originalB === null) {
+      setOriginalB([...network.b]);
+    }
+  }, [network]);
+
+  // Mettre à jour b quand le scénario change ET réinitialiser les résultats et la topologie
+  useEffect(() => {
+    if (network && originalB !== null) {
+      const multiplier = scenario === 'matin' ? 1.3 : scenario === 'soir' ? 0.8 : 1.0;
+      const newB = originalB.map(val => val * multiplier);
+      setNetwork({ ...network, b: newB });
+      
+      // RÉINITIALISATION : remettre à zéro les résultats et la topologie
+      setResults({});
+      setComparison(null);
+      setLitNodes(new Set());
+      setBlackoutNodes(new Set());
+      setAnimatingNodes(new Set());
+      setActiveLines(new Set());
+      setCurrentLine(null);
+      setBlackoutSummary(null);
+      
+      // Retourner à l'onglet visualisation si on était sur résultats ou comparaison
+      if (activeTab === 'results' || activeTab === 'comparison') {
+        setActiveTab('visualization');
+      }
+    }
+  }, [scenario]);
 
   const checkConnection = async () => {
     try {
@@ -639,6 +717,7 @@ const App = () => {
       if (data.b) data.b = data.b.map(v => Number(v) || 0);
       if (!data.coords?.length) data.coords = generateCoords(data.n);
       setNetwork(data);
+      setOriginalB([...data.b]);
       setModifiedA(null);
       setResults({});
       setComparison(null);
@@ -648,6 +727,7 @@ const App = () => {
       setBlackoutSummary(null);
       setActiveLines(new Set());
       setCurrentLine(null);
+      setScenario('standard');
       setActiveTab('visualization');
     } catch (e) {
       setErrorMessage(`Erreur: ${e.message}`);
@@ -671,12 +751,14 @@ const App = () => {
           slack_bus: 0,
         };
         setNetwork(newNetwork);
+        setOriginalB([...newNetwork.b]);
         setModifiedA(null);
         setBrokenLines([]);
         setResults({});
         setBlackoutSummary(null);
         setActiveLines(new Set());
         setCurrentLine(null);
+        setScenario('standard');
       } catch { alert('Format JSON invalide'); }
     };
     reader.readAsText(file);
@@ -685,6 +767,21 @@ const App = () => {
   const toggleMethod = (method) => {
     setSelectedMethods(prev => {
       const newMethods = prev.includes(method) ? prev.filter(m => m !== method) : [...prev, method];
+      
+      if (newMethods.length === 0 || (prev.length > 0 && newMethods.length !== prev.length)) {
+        setResults({});
+        setComparison(null);
+        setLitNodes(new Set());
+        setBlackoutNodes(new Set());
+        setAnimatingNodes(new Set());
+        setActiveLines(new Set());
+        setCurrentLine(null);
+        
+        if (activeTab === 'results' || activeTab === 'comparison') {
+          setActiveTab('visualization');
+        }
+      }
+      
       if (newMethods.length < 2) {
         setComparison(null);
         if (activeTab === 'comparison') {
@@ -823,7 +920,7 @@ const App = () => {
             A: matrixToSolve,
             b: network.b,
             method,
-            scenario,
+            scenario: 'standard',
             broken_lines: [],
             slack_bus: network.slack_bus ?? 0,
           })
@@ -879,6 +976,11 @@ const App = () => {
     const newB = [...network.b];
     newB[index] = parseFloat(value) || 0;
     setNetwork({ ...network, b: newB });
+    if (originalB !== null) {
+      const newOriginalB = [...originalB];
+      newOriginalB[index] = parseFloat(value) || 0;
+      setOriginalB(newOriginalB);
+    }
   };
 
   const renderConnectionStatus = () => {
@@ -894,12 +996,12 @@ const App = () => {
     const isModified = modifiedA !== null;
     
     return (
-      <div className="matrix-full-container">
+      <div className="matrix-full-container" style={{ background: currentTheme.cardBg }}>
         <div className="matrix-header">
-          <h3>{title}{isModified && <span style={{color: '#ef4444', marginLeft: 8, fontSize: 12}}>(Modifiée)</span>}</h3>
+          <h3 style={{ color: currentTheme.accentColor }}>{title}{isModified && <span style={{color: '#ef4444', marginLeft: 8, fontSize: 12}}>(Modifiée)</span>}</h3>
           <span className="matrix-dims">{n}×{n}</span>
         </div>
-        <div className="matrix-scroll-wrapper">
+        <div className="matrix-scroll-wrapper" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)' }}>
           <div className="matrix-full">
             {matrix.map((row, i) => (
               <div key={i} className="matrix-row-full">
@@ -913,7 +1015,8 @@ const App = () => {
                     <span key={j}
                       className={`matrix-cell-full ${i===j?'diagonal':''} ${Math.abs(numVal)<0.001?'zero':''} ${isBrokenLine?'broken':''}`}
                       title={`[${i+1},${j+1}]: ${numVal}`}
-                      style={isBrokenLine ? {background: 'rgba(239,68,68,0.3)', color: '#fca5a5'} : {}}>
+                      style={isBrokenLine ? {background: 'rgba(239,68,68,0.3)', color: '#fca5a5'} : 
+                            {background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(255,255,255,0.05)'}}>
                       {display}
                     </span>
                   );
@@ -933,19 +1036,23 @@ const App = () => {
 
   const renderFullVector = (vector, title) => {
     if (!vector) return null;
+    const scenarioMultiplier = scenario === 'matin' ? 1.3 : scenario === 'soir' ? 0.8 : 1.0;
+    const scenarioLabel = scenario === 'matin' ? ' (+30%)' : scenario === 'soir' ? ' (-20%)' : '';
+    
     return (
-      <div className="vector-full-container">
+      <div className="vector-full-container" style={{ background: currentTheme.cardBg }}>
         <div className="matrix-header">
-          <h3>{title}</h3>
+          <h3 style={{ color: currentTheme.accentColor }}>{title}{scenarioLabel && <span style={{color: currentTheme.accentColor, marginLeft: 8, fontSize: 12}}>{scenarioLabel}</span>}</h3>
           <span className="matrix-dims">{vector.length}×1</span>
         </div>
-        <div className="vector-scroll-wrapper">
+        <div className="vector-scroll-wrapper" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)' }}>
           <div className="vector-full">
             {vector.map((val, i) => (
-              <div key={i} className="vector-row">
-                <span className="vector-index">b[{i+1}]</span>
+              <div key={i} className="vector-row" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.05)' : 'rgba(255,255,255,0.05)' }}>
+                <span className="vector-index" style={{ color: themeMode === 'nuit' ? '#7b68ee' : '#64748b' }}>b[{i+1}]</span>
                 <input type="number" step="0.001" value={val}
-                  onChange={(e) => modifyB(i, e.target.value)} className="vector-input" />
+                  onChange={(e) => modifyB(i, e.target.value)} className="vector-input" 
+                  style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)', color: '#fff' }}/>
                 <span className={`vector-type ${val > 0 ? 'prod' : 'cons'}`}>
                   {val > 0 ? '⚡ Prod' : '🔌 Cons'}
                 </span>
@@ -957,13 +1064,19 @@ const App = () => {
     );
   };
 
+  // Classe CSS dynamique pour le titre
+  const titleClassName = themeMode === 'nuit' ? 'app-title app-title-nuit' : 'app-title app-title-jour';
+
   if (!network) {
     return (
-      <div className="app">
-        <header className="header">
+      <div className="app" style={{ background: currentTheme.background, minHeight: '100vh' }}>
+        <header className="header" style={{ 
+          background: themeMode === 'nuit' ? 'rgba(10,10,20,0.9)' : 'rgba(15,23,42,0.8)', 
+          borderBottom: `1px solid ${themeMode === 'nuit' ? '#7b68ee' : 'rgba(255,255,255,0.1)'}` 
+        }}>
           <div className="header-left">
-            <h1>⚡ Smart Grid Solver</h1>
-            <p>Résolution de Ax=b par méthodes directes avancées</p>
+            <h1 className={titleClassName}>⚡ Smart Grid Solver</h1>
+            <p style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#64748b' }}>Résolution de Ax=b par méthodes directes avancées</p>
           </div>
           <div className="header-right">{renderConnectionStatus()}</div>
         </header>
@@ -973,34 +1086,34 @@ const App = () => {
           </div>
         )}
         <div className="main-container">
-          <div className="control-panel">
-            <div className="section">
-              <h2>📁 DONNÉES RÉSEAU</h2>
+          <div className="control-panel" style={{ background: currentTheme.cardBg, border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.3)' : 'rgba(255,255,255,0.08)'}` }}>
+            <div className="section" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(15,23,42,0.4)' }}>
+              <h2 style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#94a3b8' }}>📁 DONNÉES RÉSEAU</h2>
               <div className="subsection">
-                <label>Standards IEEE</label>
+                <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Standards IEEE</label>
                 <div className="button-group grid-3">
-                  <button onClick={() => loadIEEE(14)} className="btn ieee">IEEE 14</button>
-                  <button onClick={() => loadIEEE(30)} className="btn ieee">IEEE 30</button>
-                  <button onClick={() => loadIEEE(118)} className="btn ieee">IEEE 118</button>
+                  <button onClick={() => loadIEEE(14)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 14</button>
+                  <button onClick={() => loadIEEE(30)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 30</button>
+                  <button onClick={() => loadIEEE(118)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 118</button>
                 </div>
               </div>
               <div className="subsection">
-                <label>Import/Export</label>
-                <label className="btn import-btn">
+                <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Import/Export</label>
+                <label className="btn import-btn" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(255,255,255,0.05)', color: themeMode === 'nuit' ? '#b794f6' : '#94a3b8', border: themeMode === 'nuit' ? '1px dashed rgba(123,104,238,0.4)' : '1px dashed rgba(255,255,255,0.2)' }}>
                   📥 Importer Xij (JSON)
                   <input type="file" accept=".json" onChange={handleFileImport} hidden />
                 </label>
               </div>
             </div>
           </div>
-          <div className="main-content">
+          <div className="main-content" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.4)' : 'rgba(30,41,59,0.3)', border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(255,255,255,0.08)'}` }}>
             <div className="welcome-screen">
-              <h2>Bienvenue dans Smart Grid Solver</h2>
-              <p>Sélectionnez un réseau IEEE pour commencer l'analyse</p>
+              <h2 style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#00ff88' }}>Bienvenue dans Smart Grid Solver</h2>
+              <p style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Sélectionnez un réseau IEEE pour commencer l'analyse</p>
               <div className="features">
-                <div className="feature">⚡ 3 Méthodes directes</div>
-                <div className="feature">📊 Visualisation complète</div>
-                <div className="feature">✂️ Simulation de coupure</div>
+                <div className="feature" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(0,0,0,0.3)', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.3)' : '1px solid rgba(0,210,255,0.3)', color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff' }}>⚡ 3 Méthodes directes</div>
+                <div className="feature" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(0,0,0,0.3)', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.3)' : '1px solid rgba(0,210,255,0.3)', color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff' }}>📊 Visualisation complète</div>
+                <div className="feature" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(0,0,0,0.3)', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.3)' : '1px solid rgba(0,210,255,0.3)', color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff' }}>✂️ Simulation de coupure</div>
               </div>
             </div>
           </div>
@@ -1010,82 +1123,117 @@ const App = () => {
   }
 
   return (
-    <div className="app">
-      <header className="header">
+    <div className="app" style={{ background: currentTheme.background, minHeight: '100vh' }}>
+      <header className="header" style={{ 
+        background: themeMode === 'nuit' ? 'rgba(10,10,20,0.9)' : 'rgba(15,23,42,0.8)', 
+        borderBottom: `1px solid ${themeMode === 'nuit' ? '#7b68ee' : 'rgba(255,255,255,0.1)'}` 
+      }}>
         <div className="header-left">
-          <h1>⚡ Smart Grid Solver</h1>
-          <p>Résolution de Ax=b par méthodes directes avancées</p>
+          <h1 className={titleClassName}>⚡ Smart Grid Solver</h1>
+          <p style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#64748b' }}>Résolution de Ax=b par méthodes directes avancées</p>
         </div>
-        <div className="header-right">{renderConnectionStatus()}</div>
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          {renderConnectionStatus()}
+        </div>
       </header>
       {errorMessage && (
-        <div className="error-banner">⚠️ {errorMessage}
+        <div className="error-banner" style={{ background: themeMode === 'nuit' ? 'rgba(220,38,38,0.2)' : 'rgba(220,38,38,0.15)' }}>⚠️ {errorMessage}
           <button onClick={checkConnection}>Réessayer</button>
         </div>
       )}
 
       <div className="main-container">
-        <div className="control-panel">
-          <div className="section">
-            <h2>📁 DONNÉES RÉSEAU</h2>
+        <div className="control-panel" style={{ background: currentTheme.cardBg, border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.3)' : 'rgba(255,255,255,0.08)'}` }}>
+          <div className="section" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(15,23,42,0.4)' }}>
+            <h2 style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#94a3b8' }}>📁 DONNÉES RÉSEAU</h2>
             <div className="subsection">
-              <label>Standards IEEE</label>
+              <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Standards IEEE</label>
               <div className="button-group grid-3">
-                <button onClick={() => loadIEEE(14)} className="btn ieee">IEEE 14</button>
-                <button onClick={() => loadIEEE(30)} className="btn ieee">IEEE 30</button>
-                <button onClick={() => loadIEEE(118)} className="btn ieee">IEEE 118</button>
+                <button onClick={() => loadIEEE(14)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 14</button>
+                <button onClick={() => loadIEEE(30)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 30</button>
+                <button onClick={() => loadIEEE(118)} className="btn ieee" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,102,204,0.2)', color: themeMode === 'nuit' ? '#b794f6' : '#60a5fa', border: themeMode === 'nuit' ? '1px solid rgba(123,104,238,0.4)' : '1px solid rgba(96,165,250,0.3)' }}>IEEE 118</button>
               </div>
             </div>
             <div className="subsection">
-              <label>Import/Export</label>
-              <label className="btn import-btn">
+              <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Import/Export</label>
+              <label className="btn import-btn" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(255,255,255,0.05)', color: themeMode === 'nuit' ? '#b794f6' : '#94a3b8', border: themeMode === 'nuit' ? '1px dashed rgba(123,104,238,0.4)' : '1px dashed rgba(255,255,255,0.2)' }}>
                 📥 Importer Xij (JSON)
                 <input type="file" accept=".json" onChange={handleFileImport} hidden />
               </label>
             </div>
           </div>
 
-          <div className="section simulation-section">
-            <h2>⚙️ SIMULATION</h2>
+          <div className="section simulation-section" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(15,23,42,0.4)' }}>
+            <h2 style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#94a3b8' }}>⚙️ SIMULATION</h2>
             <div className="subsection">
-              <label>Méthodes de résolution</label>
+              <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Méthodes de résolution</label>
               <div className="methods-checkbox">
                 {[
-                  { id: 'lu', label: 'Factorisation LU (Stable)' },
+                  { id: 'lu', label: 'Factorisation LU' },
                   { id: 'gauss', label: 'Élimination Gauss' },
-                  { id: 'cholesky', label: 'Cholesky (SDP)' },
+                  { id: 'cholesky', label: 'Cholesky' },
                 ].map(m => (
                   <label key={m.id}
-                    className={`checkbox-label ${selectedMethods.includes(m.id) ? 'selected' : ''}`}>
+                    className={`checkbox-label ${selectedMethods.includes(m.id) ? 'selected' : ''}`}
+                    style={{ 
+                      background: selectedMethods.includes(m.id) 
+                        ? (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,210,255,0.1)') 
+                        : 'rgba(255,255,255,0.03)',
+                      borderColor: selectedMethods.includes(m.id) 
+                        ? (themeMode === 'nuit' ? '#7b68ee' : 'rgba(0,210,255,0.4)') 
+                        : 'transparent'
+                    }}>
                     <input type="checkbox" checked={selectedMethods.includes(m.id)}
                       onChange={() => toggleMethod(m.id)} />
-                    <span>{m.label}</span>
+                    <span style={{ color: themeMode === 'nuit' ? '#e2e8f0' : '#e2e8f0' }}>{m.label}</span>
                   </label>
                 ))}
               </div>
             </div>
             <div className="subsection">
-              <label>Scénario</label>
+              <label style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Scénario</label>
               <div className="scenario-buttons">
                 {[
-                  { id: 'standard', label: '☀️ Standard' },
-                  { id: 'matin', label: '🌅 Matin +30%' },
-                  { id: 'soir', label: '🌆 Soir -20%' },
+                  { id: 'standard', label: 'Standard', multiplier: 1.0, mode: 'jour' },
+                  { id: 'matin', label: 'Matin +30%', multiplier: 1.3, mode: 'jour' },
+                  { id: 'soir', label: 'Soir -20%', multiplier: 0.8, mode: 'nuit' },
                 ].map(s => (
                   <button key={s.id}
                     className={`scenario-btn ${scenario === s.id ? 'active' : ''}`}
-                    onClick={() => setScenario(s.id)}>{s.label}</button>
+                    onClick={() => setScenario(s.id)}
+                    style={{
+                      background: scenario === s.id 
+                        ? (s.mode === 'nuit' ? 'rgba(123,104,238,0.3)' : 'rgba(0,210,255,0.15)') 
+                        : 'rgba(255,255,255,0.03)',
+                      borderColor: scenario === s.id 
+                        ? (s.mode === 'nuit' ? '#7b68ee' : 'rgba(0,210,255,0.4)') 
+                        : 'rgba(255,255,255,0.08)',
+                      color: scenario === s.id 
+                        ? (s.mode === 'nuit' ? '#b794f6' : '#00d2ff') 
+                        : '#94a3b8',
+                      position: 'relative'
+                    }}>
+                    <span>{s.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
             <button onClick={solve} className="btn solve-btn"
-              disabled={loading || selectedMethods.length === 0}>
+              disabled={loading || selectedMethods.length === 0}
+              style={{ 
+                background: themeMode === 'nuit' 
+                  ? 'linear-gradient(135deg, #7b68ee, #9d4edd)' 
+                  : 'linear-gradient(135deg, #00ff88, #00cc6a)',
+                boxShadow: themeMode === 'nuit' 
+                  ? '0 4px 15px rgba(123,104,238,0.4)' 
+                  : '0 4px 15px rgba(0,255,136,0.3)'
+              }}>
               {loading ? '⏳ Calcul...' : '🚀 Lancer résolution'}
             </button>
           </div>
 
-          <div className="section danger-zone">
-            <h2>✂️ SIMULATION DE COUPURE</h2>
+          <div className="section danger-zone" style={{ background: themeMode === 'nuit' ? 'rgba(35,20,20,0.6)' : 'rgba(15,23,42,0.4)', border: `1px solid ${themeMode === 'nuit' ? 'rgba(220,38,38,0.3)' : 'rgba(220,38,38,0.15)'}` }}>
+            <h2 style={{ color: '#f87171' }}>✂️ SIMULATION DE COUPURE</h2>
             {blackoutSummary && (
               <div style={{
                 background: 'rgba(220,38,38,0.15)', border: '1px solid #dc2626',
@@ -1099,24 +1247,84 @@ const App = () => {
             )}
             <div className="broken-lines-list">
               {brokenLines.map((line, idx) => (
-                <div key={idx} className="broken-line-item">
-                  <span>Ligne {line.from + 1} ↔ {line.to + 1}</span>
-                  <button onClick={() => removeBrokenLine(idx)} className="remove-line">×</button>
+                <div key={idx} className="broken-line-item" style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)' }}>
+                  <span style={{ color: '#fca5a5' }}>Ligne {line.from + 1} ↔ {line.to + 1}</span>
+                  <button onClick={() => removeBrokenLine(idx)} className="remove-line" style={{ color: '#fca5a5' }}>×</button>
                 </div>
               ))}
             </div>
-            <div className="add-fault-form">
-              <input type="number" placeholder={`Départ (1-${network.n})`}
-                value={tempBrokenLine.from}
-                onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, from: e.target.value })} />
-              <input type="number" placeholder={`Arrivée (1-${network.n})`}
-                value={tempBrokenLine.to}
-                onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, to: e.target.value })} />
-              <button onClick={addBrokenLine} className="btn add-fault-btn">+ Couper</button>
+            <div className="add-fault-form" style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                <input 
+                  type="number" 
+                  placeholder="Départ"
+                  value={tempBrokenLine.from}
+                  onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, from: e.target.value })}
+                  style={{ 
+                    flex: 1, 
+                    width: '50%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(220,38,38,0.3)',
+                    background: 'rgba(0,0,0,0.3)',
+                    color: '#fff',
+                    fontSize: '13px'
+                  }}
+                />
+                <input 
+                  type="number" 
+                  placeholder="Arrivée"
+                  value={tempBrokenLine.to}
+                  onChange={(e) => setTempBrokenLine({ ...tempBrokenLine, to: e.target.value })}
+                  style={{ 
+                    flex: 1, 
+                    width: '50%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(220,38,38,0.3)',
+                    background: 'rgba(0,0,0,0.3)',
+                    color: '#fff',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+              <button 
+                onClick={addBrokenLine} 
+                className="btn add-fault-btn"
+                style={{
+                  width: '100%',
+                  background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 50%, #dc2626 100%)',
+                  color: '#0f172a',
+                  fontWeight: '700',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 4px 15px rgba(255,107,107,0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'linear-gradient(135deg, #ff8585 0%, #ff6b6b 50%, #ee5a5a 100%)';
+                  e.target.style.boxShadow = '0 6px 20px rgba(255,107,107,0.5)';
+                  e.target.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 50%, #dc2626 100%)';
+                  e.target.style.boxShadow = '0 4px 15px rgba(255,107,107,0.3)';
+                  e.target.style.transform = 'translateY(0)';
+                }}
+              >
+                + Couper
+              </button>
             </div>
             {brokenLines.length > 0 && (
               <div className="fault-status" style={{display: 'flex', gap: 8, flexDirection: 'column'}}>
-                <span className={blackoutNodes.size > 0 ? 'blackout-badge' : 'stable-badge'}>
+                <span className={blackoutNodes.size > 0 ? 'blackout-badge' : 'stable-badge'} style={{ 
+                  background: blackoutNodes.size > 0 ? 'rgba(220,38,38,0.2)' : 'rgba(0,255,136,0.1)',
+                  color: blackoutNodes.size > 0 ? '#fca5a5' : '#00ff88',
+                  border: `1px solid ${blackoutNodes.size > 0 ? '#dc2626' : '#00ff88'}`
+                }}>
                   {blackoutNodes.size > 0 ? `🔴 BLACKOUT (${blackoutNodes.size} nœuds)` : '🟢 STABLE'}
                   {' '}— {brokenLines.length} ligne(s) coupée(s)
                 </span>
@@ -1131,15 +1339,31 @@ const App = () => {
           </div>
         </div>
 
-        <div className="main-content">
-          <div className="tabs">
-            <button className={`tab ${activeTab==='visualization'?'active':''}`} onClick={() => setActiveTab('visualization')}>🌐 Visualisation</button>
-            <button className={`tab ${activeTab==='matrices'?'active':''}`} onClick={() => setActiveTab('matrices')}>🧮 Matrices</button>
-            <button className={`tab ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')}>
+        <div className="main-content" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.4)' : 'rgba(30,41,59,0.3)', border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(255,255,255,0.08)'}` }}>
+          <div className="tabs" style={{ background: themeMode === 'nuit' ? 'rgba(10,10,20,0.4)' : 'rgba(0,0,0,0.2)' }}>
+            <button className={`tab ${activeTab==='visualization'?'active':''}`} onClick={() => setActiveTab('visualization')}
+              style={{ 
+                color: activeTab === 'visualization' ? (themeMode === 'nuit' ? '#b794f6' : '#00d2ff') : '#64748b',
+                background: activeTab === 'visualization' ? (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,210,255,0.15)') : 'transparent'
+              }}>🌐 Visualisation</button>
+            <button className={`tab ${activeTab==='matrices'?'active':''}`} onClick={() => setActiveTab('matrices')}
+              style={{ 
+                color: activeTab === 'matrices' ? (themeMode === 'nuit' ? '#b794f6' : '#00d2ff') : '#64748b',
+                background: activeTab === 'matrices' ? (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,210,255,0.15)') : 'transparent'
+              }}>🧮 Matrices</button>
+            <button className={`tab ${activeTab==='results'?'active':''}`} onClick={() => setActiveTab('results')}
+              style={{ 
+                color: activeTab === 'results' ? (themeMode === 'nuit' ? '#b794f6' : '#00d2ff') : '#64748b',
+                background: activeTab === 'results' ? (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,210,255,0.15)') : 'transparent'
+              }}>
               📊 Résultats {Object.keys(results).length > 0 && `(${Object.keys(results).length})`}
             </button>
             {comparison && selectedMethods.length >= 2 && (
-              <button className={`tab ${activeTab==='comparison'?'active':''}`} onClick={() => setActiveTab('comparison')}>⚖️ Comparaison</button>
+              <button className={`tab ${activeTab==='comparison'?'active':''}`} onClick={() => setActiveTab('comparison')}
+                style={{ 
+                  color: activeTab === 'comparison' ? (themeMode === 'nuit' ? '#b794f6' : '#00d2ff') : '#64748b',
+                  background: activeTab === 'comparison' ? (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(0,210,255,0.15)') : 'transparent'
+                }}>⚖️ Comparaison</button>
             )}
           </div>
 
@@ -1147,8 +1371,8 @@ const App = () => {
             {activeTab === 'visualization' && (
               <div className="visualization-panel">
                 <div className="network-header">
-                  <h2>{network.name}</h2>
-                  <span className="network-stats">
+                  <h2 style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00ff88' }}>{network.name}</h2>
+                  <span className="network-stats" style={{ background: themeMode === 'nuit' ? 'rgba(123,104,238,0.1)' : 'rgba(0,0,0,0.3)', border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.3)' : 'rgba(255,255,255,0.1)'}` }}>
                     {network.n} nœuds
                     {blackoutNodes.size > 0 && (
                       <span style={{ color: '#f87171', marginLeft: 8 }}>
@@ -1162,7 +1386,7 @@ const App = () => {
                     )}
                   </span>
                 </div>
-                <div className="network-container">
+                <div className="network-container" style={{ background: currentTheme.networkBg }}>
                   <NetworkSVG
                     network={network}
                     modifiedA={modifiedA}
@@ -1172,12 +1396,13 @@ const App = () => {
                     animatingNodes={animatingNodes}
                     activeLines={activeLines}
                     currentLine={currentLine}
+                    theme={themeMode}
                   />
                 </div>
-                <div className="legend">
+                <div className="legend" style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(15,23,42,0.6)' }}>
                   <div className="legend-item">
-                    <span className="dot lit"></span>
-                    <span>Alimenté</span>
+                    <span className="dot lit" style={{ background: themeMode === 'nuit' ? '#9d4edd' : '#00ff88', boxShadow: `0 0 10px ${themeMode === 'nuit' ? '#9d4edd' : '#00ff88'}` }}></span>
+                    <span style={{ color: themeMode === 'nuit' ? '#c7c7c7' : '#94a3b8' }}>Alimenté</span>
                   </div>
                   <div className="legend-item">
                     <span style={{
@@ -1191,19 +1416,19 @@ const App = () => {
                       marginRight: 8,
                       verticalAlign: 'middle'
                     }}></span>
-                    <span>Bus Slack (Réf.)</span>
+                    <span style={{ color: themeMode === 'nuit' ? '#c7c7c7' : '#94a3b8' }}>Bus Slack (Réf.)</span>
                   </div>
                   <div className="legend-item">
-                    <span className="dot unlit"></span>
-                    <span>Non résolu</span>
+                    <span className="dot unlit" style={{ background: themeMode === 'nuit' ? '#2d2d44' : '#374151', border: `2px solid ${themeMode === 'nuit' ? '#3d3d5c' : '#4b5563'}` }}></span>
+                    <span style={{ color: themeMode === 'nuit' ? '#c7c7c7' : '#94a3b8' }}>Non résolu</span>
                   </div>
                   <div className="legend-item">
-                    <span className="dot blackout"></span>
-                    <span>Hors tension</span>
+                    <span className="dot blackout" style={{ background: '#ef4444', boxShadow: '0 0 10px #ef4444' }}></span>
+                    <span style={{ color: themeMode === 'nuit' ? '#c7c7c7' : '#94a3b8' }}>Hors tension</span>
                   </div>
                   <div className="legend-item">
                     <span style={{ display:'inline-block', width:24, height:2, background:'#ef4444', marginRight:5, verticalAlign:'middle' }}></span>
-                    <span>Ligne interrompue</span>
+                    <span style={{ color: themeMode === 'nuit' ? '#c7c7c7' : '#94a3b8' }}>Ligne interrompue</span>
                   </div>
                 </div>
               </div>
@@ -1219,15 +1444,15 @@ const App = () => {
             {activeTab === 'results' && (
               <div className="results-panel">
                 {Object.keys(results).length === 0 ? (
-                  <div className="empty-state"><p>Lancez la résolution pour voir les résultats</p></div>
+                  <div className="empty-state"><p style={{ color: themeMode === 'nuit' ? '#b794f6' : '#64748b' }}>Lancez la résolution pour voir les résultats</p></div>
                 ) : (
                   <div className="results-grid">
                     {Object.entries(results).map(([method, data]) => {
                       const perf = PERFORMANCE_DESC[method] || { label: 'Inconnu', detail: '', color: '#888' };
                       return (
-                        <div key={method} className={`result-card ${data.error ? 'error' : ''}`}>
-                          <div className="result-header">
-                            <h3>{method.toUpperCase()}</h3>
+                        <div key={method} className={`result-card ${data.error ? 'error' : ''}`} style={{ background: themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(0,0,0,0.3)', border: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(255,255,255,0.08)'}` }}>
+                          <div className="result-header" style={{ borderBottom: `1px solid ${themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(255,255,255,0.1)'}` }}>
+                            <h3 style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff' }}>{method.toUpperCase()}</h3>
                             {data.error ? <span className="badge error">Erreur</span> : <span className="badge success">OK</span>}
                           </div>
                           {!data.error && (
@@ -1241,29 +1466,29 @@ const App = () => {
                                 </div>
                               )}
                               <div className="result-metrics">
-                                <div className="metric">
-                                  <label>⏱️ Temps d'exécution</label>
-                                  <value>{(data.time * 1000).toFixed(3)} ms</value>
+                                <div className="metric" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)', borderLeft: `3px solid ${themeMode === 'nuit' ? '#7b68ee' : '#00d2ff'}` }}>
+                                  <label style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#64748b' }}>⏱️ Temps d'exécution</label>
+                                  <value style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00ff88' }}>{(data.time * 1000).toFixed(3)} ms</value>
                                 </div>
-                                <div className="metric">
-                                  <label>⚡ Performance</label>
+                                <div className="metric" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)', borderLeft: `3px solid ${themeMode === 'nuit' ? '#7b68ee' : '#00d2ff'}` }}>
+                                  <label style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#64748b' }}>⚡ Performance</label>
                                   <value style={{ color: perf.color, fontSize: '14px', fontWeight: 'bold' }}>
                                     {perf.label}
                                   </value>
                                 </div>
-                                <div className="metric">
-                                  <label>🎯 Précision</label>
-                                  <value>{data.residual?.toExponential(2)}</value>
+                                <div className="metric" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.3)', borderLeft: `3px solid ${themeMode === 'nuit' ? '#7b68ee' : '#00d2ff'}` }}>
+                                  <label style={{ color: themeMode === 'nuit' ? '#9d4edd' : '#64748b' }}>🎯 Précision</label>
+                                  <value style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00ff88' }}>{data.residual?.toExponential(2)}</value>
                                 </div>
                               </div>
                               <div className="solution-section">
-                                <h4>Solution — Angles de phase θ (rad)</h4>
-                                <div className="solution-grid">
+                                <h4 style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00ff88' }}>Solution — Angles de phase θ (rad)</h4>
+                                <div className="solution-grid" style={{ background: themeMode === 'nuit' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.2)' }}>
                                   {data.solution?.map((val, i) => (
                                     <div key={i} className="solution-item"
-                                      style={data.blackout_nodes?.includes(i) ? { opacity: 0.35 } : {}}>
-                                      <span className="theta-label">θ<sub>{i+1}</sub></span>
-                                      <span className="theta-value">
+                                      style={{...data.blackout_nodes?.includes(i) ? { opacity: 0.35 } : {}, background: themeMode === 'nuit' ? 'rgba(123,104,238,0.05)' : 'rgba(255,255,255,0.05)'}}>
+                                      <span className="theta-label" style={{ color: themeMode === 'nuit' ? '#7b68ee' : '#64748b' }}>θ<sub>{i+1}</sub></span>
+                                      <span className="theta-value" style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00ff88' }}>
                                         {val === null || val === undefined
                                           ? '— hors tension'
                                           : `${val.toFixed(6)} rad`}
@@ -1284,12 +1509,12 @@ const App = () => {
             )}
 
             {activeTab === 'comparison' && comparison && selectedMethods.length >= 2 && (
-              <div className="comparison-panel">
-                <h2>📊 Analyse comparative</h2>
+              <div className="comparison-panel" style={{ padding: '20px' }}>
+                <h2 style={{ color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff', marginBottom: '30px', marginTop: '10px' }}>📊 Analyse comparative</h2>
 
                 <ComparisonCharts comparison={comparison} />
 
-                <h3 style={{ marginTop: 24, marginBottom: 16, color: '#00d2ff', fontSize: '16px' }}>
+                <h3 style={{ marginTop: '40px', marginBottom: '20px', color: themeMode === 'nuit' ? '#b794f6' : '#00d2ff', fontSize: '16px' }}>
                   Recommandations par méthode
                 </h3>
                 <div style={{ 
@@ -1305,8 +1530,8 @@ const App = () => {
                     const isBest = comparison.recommendation.method === method;
                     return (
                       <div key={method} style={{
-                        background: isBest ? `${perf.color}15` : 'rgba(30,41,59,0.6)',
-                        border: `1px solid ${isBest ? perf.color : 'rgba(255,255,255,0.1)'}`,
+                        background: isBest ? `${perf.color}15` : (themeMode === 'nuit' ? 'rgba(20,20,35,0.6)' : 'rgba(30,41,59,0.6)'),
+                        border: `1px solid ${isBest ? perf.color : (themeMode === 'nuit' ? 'rgba(123,104,238,0.2)' : 'rgba(255,255,255,0.1)')}`,
                         borderRadius: '12px',
                         padding: '16px',
                         position: 'relative'
@@ -1346,12 +1571,12 @@ const App = () => {
                             {perf.label}
                           </span>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+                        <div style={{ fontSize: '12px', color: themeMode === 'nuit' ? '#9d4edd' : '#94a3b8', marginBottom: '12px' }}>
                           {(data.time * 1000).toFixed(3)} ms · Résidu {data.residual.toExponential(2)}
                         </div>
                         <div style={{ 
                           fontSize: '13px', 
-                          color: '#e2e8f0',
+                          color: themeMode === 'nuit' ? '#c7c7c7' : '#e2e8f0',
                           lineHeight: '1.5'
                         }}>
                           {perf.recommendation}
