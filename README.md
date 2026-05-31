@@ -4,6 +4,12 @@ Projet académique réalisé dans le cadre du cours d'**Analyse Numérique** à 
 
 Smart Grid IEEE est une application web de simulation et de visualisation de réseaux électriques standards IEEE. Elle permet de charger des topologies IEEE 14, IEEE 30 et IEEE 118 bus ou d'importer un fichier personnalisé, de simuler des coupures de lignes, puis de comparer plusieurs méthodes numériques de résolution.
 
+## Contexte : Smart Grid
+
+Un **Smart Grid** (réseau électrique intelligent) est un réseau de distribution d'énergie intégrant des technologies numériques pour surveiller et optimiser les flux d'électricité en temps réel. Il permet la détection automatique des pannes, l'intégration des énergies renouvelables et l'optimisation de la charge selon les scénarios de consommation.
+
+Ce projet applique des méthodes numériques (Gauss, LU, Cholesky) pour résoudre les systèmes d'équations linéaires modélisant les flux de puissance dans un réseau IEEE.
+
 ## Fonctionnalités
 
 - Chargement des réseaux IEEE 14, IEEE 30 et IEEE 118 à partir de données intégrées.
