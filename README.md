@@ -1,4 +1,4 @@
-# Smart Grid IEEE
+# Smart Grid 
 
 Projet académique réalisé dans le cadre du cours d'**Analyse Numérique** à l'Institut Supérieur d'Informatique (ISI Ariana).
 
