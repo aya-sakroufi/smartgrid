@@ -1,21 +1,24 @@
 # Smart Grid IEEE
 
-Smart Grid IEEE est une application web de simulation et de visualisation de reseaux electriques standards IEEE. Elle permet de charger des topologies IEEE 14, IEEE 30 et IEEE 118 bus, de simuler des coupures de lignes, puis de comparer plusieurs methodes numeriques de resolution.
+Projet académique réalisé dans le cadre du cours d'**Analyse Numérique** à l'Institut Supérieur d'Informatique (ISI Ariana).
 
-## Fonctionnalites
+Smart Grid IEEE est une application web de simulation et de visualisation de réseaux électriques standards IEEE. Elle permet de charger des topologies IEEE 14, IEEE 30 et IEEE 118 bus ou d'importer un fichier personnalisé, de simuler des coupures de lignes, puis de comparer plusieurs méthodes numériques de résolution.
 
-- Chargement des reseaux IEEE 14, IEEE 30 et IEEE 118 a partir de donnees integrees.
-- Visualisation interactive du reseau avec zoom, deplacement et etats des noeuds.
-- Simulation de scenarios de charge standard, matin et soir.
-- Simulation de coupures de lignes et detection des noeuds hors tension.
-- Resolution numerique par elimination de Gauss, factorisation LU et Cholesky.
-- Comparaison des performances selon le temps d'execution, le residu et le nombre d'iterations.
-- API Flask pour exposer les donnees, lancer les calculs et comparer les methodes.
+## Fonctionnalités
+
+- Chargement des réseaux IEEE 14, IEEE 30 et IEEE 118 à partir de données intégrées.
+- **Import d'un fichier personnalisé** pour charger une topologie de réseau externe.
+- Visualisation interactive du réseau avec zoom, déplacement et états des nœuds.
+- Simulation de scénarios de charge standard, matin et soir.
+- Simulation de coupures de lignes et détection des nœuds hors tension.
+- Résolution numérique par élimination de Gauss, factorisation LU et Cholesky.
+- Comparaison des performances selon le temps d'exécution, le résidu et le nombre d'itérations.
+- API Flask pour exposer les données, lancer les calculs et comparer les méthodes.
 
 ## Architecture
 
-```text
-smartgrid-VF/
+```
+smartgrid/
 ├── backend/
 │   └── app.py
 └── frontend/
@@ -27,11 +30,11 @@ smartgrid-VF/
 
 ## Technologies
 
-- Backend: Python, Flask, Flask-CORS, Flask-SocketIO, NumPy.
-- Frontend: React, JavaScript, CSS.
-- Donnees reseau: cas IEEE bases sur des topologies de reference Matpower.
+- **Backend :** Python, Flask, Flask-CORS, Flask-SocketIO, NumPy.
+- **Frontend :** React, JavaScript, CSS.
+- **Données réseau :** cas IEEE basés sur des topologies de référence Matpower.
 
-## Prerequis
+## Prérequis
 
 - Python 3.10 ou version compatible.
 - Node.js 18 ou version compatible.
@@ -41,25 +44,22 @@ smartgrid-VF/
 
 ### Backend
 
-Depuis la racine du projet:
+Depuis la racine du projet :
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Linux / macOS
 pip install flask flask-cors flask-socketio numpy
 python app.py
 ```
 
-Le backend demarre sur:
-
-```text
-http://localhost:5000
-```
+Le backend démarre sur : `http://localhost:5000`
 
 ### Frontend
 
-Dans un second terminal, depuis la racine du projet:
+Dans un second terminal, depuis la racine du projet :
 
 ```bash
 cd frontend
@@ -67,42 +67,38 @@ npm install
 npm start
 ```
 
-Le frontend demarre sur:
-
-```text
-http://localhost:3000
-```
+Le frontend démarre sur : `http://localhost:3000`
 
 ## Endpoints API
 
-| Methode | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/api/health` | Verifie l'etat du backend. |
-| GET | `/api/ieee/<size>` | Charge un reseau IEEE. Valeurs supportees: `14`, `30`, `118`. |
-| POST | `/api/solve` | Resout le systeme selon la methode et le scenario fournis. |
-| POST | `/api/compare` | Compare les methodes de resolution disponibles. |
+| Méthode | Endpoint           | Description                                                    |
+| ------- | ------------------ | -------------------------------------------------------------- |
+| GET     | `/api/health`      | Vérifie l'état du backend.                                     |
+| GET     | `/api/ieee/<size>` | Charge un réseau IEEE. Valeurs supportées : `14`, `30`, `118`. |
+| POST    | `/api/upload`      | Importe un fichier de réseau personnalisé.                     |
+| POST    | `/api/solve`       | Résout le système selon la méthode et le scénario fournis.     |
+| POST    | `/api/compare`     | Compare les méthodes de résolution disponibles.                |
 
 ## Utilisation
 
-1. Demarrer le backend Flask.
-2. Demarrer le frontend React.
-3. Choisir un standard IEEE dans le panneau de controle.
-4. Selectionner une ou plusieurs methodes de resolution.
-5. Ajuster le scenario de charge ou ajouter des coupures de lignes.
-6. Lancer la resolution et consulter les resultats, matrices et comparaisons.
+1. Démarrer le backend Flask.
+2. Démarrer le frontend React.
+3. Choisir un standard IEEE dans le panneau de contrôle, **ou importer un fichier de réseau personnalisé**.
+4. Sélectionner une ou plusieurs méthodes de résolution.
+5. Ajuster le scénario de charge ou ajouter des coupures de lignes.
+6. Lancer la résolution et consulter les résultats, matrices et comparaisons.
 
-## Structure des donnees
+## Structure des données
 
-Chaque reseau expose:
+Chaque réseau expose :
 
-- `A`: matrice d'admittance du reseau.
-- `b`: vecteur des puissances nettes.
-- `coords`: coordonnees de visualisation des bus.
-- `branches`: connexions entre les bus.
-- `slack_bus`: bus de reference.
+- `A` : matrice d'admittance du réseau.
+- `b` : vecteur des puissances nettes.
+- `coords` : coordonnées de visualisation des bus.
+- `branches` : connexions entre les bus.
+- `slack_bus` : bus de référence.
 
-## Notes de developpement
 
-- Les dossiers `node_modules`, `build` et `venv` ne sont pas versionnes.
-- Les dependances frontend sont gerees par `package.json` et `package-lock.json`.
-- Les dependances backend peuvent etre installees avec `pip install flask flask-cors flask-socketio numpy`.
+## Auteurs
+
+SAKROUFI Aya & AYARI Wiem — ISI Ariana, Université de Tunis El Manar
